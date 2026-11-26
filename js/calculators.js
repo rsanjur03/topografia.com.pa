@@ -24,7 +24,7 @@
   let calcOverlayGroup = null;
   let lastCalcMapPoints = [];
 
-  const MAP_ENABLED_CALCS = new Set(['utm-geo', 'ecef-utm', 'nad27-wgs84', 'helmert']);
+  const MAP_ENABLED_CALCS = new Set(['utm-geo', 'ecef-utm', 'nad27-wgs84', 'helmert', 'csf']);
 
   function initCalcMiniMap() {
     if (calcMap || typeof global.L === 'undefined' || !$('calcMiniMap')) return;
@@ -114,6 +114,12 @@
           $('c3GeoLon').value = lng.toFixed(8);
         }
         calcDatumTransform();
+      } else if (activeCalcId === 'csf') {
+        $('c7UtmE').value = utm.easting.toFixed(3);
+        $('c7UtmN').value = utm.northing.toFixed(3);
+        $('c7Zone').value = utm.zone;
+        $('c7Hemi').value = utm.hemisphere;
+        calcCombinedScaleFactor();
       }
     });
   }
@@ -209,6 +215,7 @@
           else if (activeCalcId === 'ecef-utm') calcEcefToUtm();
           else if (activeCalcId === 'nad27-wgs84') calcDatumTransform();
           else if (activeCalcId === 'helmert') calcHelmertBatch();
+          else if (activeCalcId === 'csf') calcCombinedScaleFactor();
         }
       }, 60);
     }
@@ -858,6 +865,118 @@
     }
   }
 
+  // ==================== 7. FACTOR DE ESCALA COMBINADO (CSF: TERRENO <-> UTM) ====================
+  let lastCsfResult = null;
+
+  const CSF_PRESETS = {
+    david:   { e: 342527.835, n: 932597.318, zone: 17, hemi: 'N', H: 48.50, N: 7.50, label: 'David, Chiriquí' },
+    boquete: { e: 342500.000, n: 970800.000, zone: 17, hemi: 'N', H: 1200.00, N: 8.00, label: 'Boquete, Chiriquí' },
+    volcan:  { e: 319600.000, n: 970400.000, zone: 17, hemi: 'N', H: 1450.00, N: 7.50, label: 'Volcán, Chiriquí' },
+    panama:  { e: 663240.000, n: 993440.000, zone: 17, hemi: 'N', H: 15.00, N: 11.00, label: 'Ciudad de Panamá' }
+  };
+
+  function calcCombinedScaleFactor() {
+    const e = parseFloat($('c7UtmE').value);
+    const n = parseFloat($('c7UtmN').value);
+    const zone = parseInt($('c7Zone').value, 10) || 17;
+    const hemi = $('c7Hemi').value || 'N';
+    const H = parseFloat($('c7OrthoH').value) || 0;
+    const Ng = parseFloat($('c7GeoidN').value) || 0;
+    const ell = $('c7Ell').value || 'WGS84';
+    const kpiGrid = $('c7KpiGrid');
+    const detailBox = $('resC7Details');
+
+    if (!Number.isFinite(e) || !Number.isFinite(n) || zone < 1 || zone > 60) {
+      detailBox.className = 'result-box error mt-sm';
+      detailBox.textContent = 'Ingresa coordenadas UTM y zona válidas.';
+      return;
+    }
+
+    const r = Geo.combinedScaleFactor(e, n, zone, hemi, H, Ng, ell);
+    lastCsfResult = r;
+    const isEn = global.TopoI18n && global.TopoI18n.getLang() === 'en';
+
+    kpiGrid.innerHTML = `
+      <div class="gps-kpi-card">
+        <span>${isEn ? 'Grid Scale Factor (k)' : 'Factor Cuadrícula (k)'}</span>
+        <strong>${r.gridScaleFactor.toFixed(8)}</strong>
+        <small>${r.gridPpm >= 0 ? '+' : ''}${r.gridPpm.toFixed(2)} ppm</small>
+      </div>
+      <div class="gps-kpi-card">
+        <span>${isEn ? 'Elevation Factor (EF)' : 'Factor Elevación (EF)'}</span>
+        <strong>${r.elevationFactor.toFixed(8)}</strong>
+        <small>${r.elevationPpm >= 0 ? '+' : ''}${r.elevationPpm.toFixed(2)} ppm (h=${r.ellipsoidalH.toFixed(1)}m)</small>
+      </div>
+      <div class="gps-kpi-card" style="border-color:rgba(0,229,160,0.55);">
+        <span>${isEn ? 'Combined Scale (CSF)' : 'Factor Combinado (CSF)'}</span>
+        <strong>${r.csf.toFixed(8)}</strong>
+        <small>1/CSF = ${r.invCsf.toFixed(8)}</small>
+      </div>
+      <div class="gps-kpi-card">
+        <span>${isEn ? 'Net Scale Correction' : 'Corrección Neta'}</span>
+        <strong>${r.csfPpm >= 0 ? '+' : ''}${r.csfPpm.toFixed(2)} ppm</strong>
+        <small>${r.mmPerKm >= 0 ? '+' : ''}${r.mmPerKm.toFixed(1)} mm / km</small>
+      </div>
+    `;
+
+    detailBox.className = 'result-box mt-sm';
+    detailBox.innerHTML = [
+      kv('Altura Elipsoidal (h = H + N):', `${r.ellipsoidalH.toFixed(3)} m (H=${r.orthoH.toFixed(2)} m, N=${r.geoidN.toFixed(2)} m)`),
+      kv('Radio Gaussiano Medio (R_G):', `${r.radiusGauss.toFixed(3)} m`),
+      kv('Geográficas / Convergencia (γ):', `${r.lat.toFixed(6)}°, ${r.lon.toFixed(6)}° · γ = ${r.convergenceDeg.toFixed(5)}°`),
+      kv('Fórmulas aplicadas:', 'EF = R_G / (R_G + h) · CSF = k × EF · D_UTM = D_Terr × CSF')
+    ].join('');
+
+    updateCsfConversions();
+
+    if (activeCalcId === 'csf') {
+      updateCalcMiniMap([{
+        lat: r.lat,
+        lon: r.lon,
+        label: `CSF ${r.csf.toFixed(6)} (${r.csfPpm >= 0 ? '+' : ''}${r.csfPpm.toFixed(0)} ppm)`,
+        color: '#00e5a0',
+        popupHtml: `<div class="map-popup"><div class="map-popup-title">Factor Combinado (CSF)</div><div><b>k (UTM):</b> ${r.gridScaleFactor.toFixed(8)}</div><div><b>EF (h=${r.ellipsoidalH.toFixed(1)}m):</b> ${r.elevationFactor.toFixed(8)}</div><div><b>CSF:</b> ${r.csf.toFixed(8)} (${r.csfPpm.toFixed(2)} ppm)</div></div>`
+      }], `Zona ${zone}${hemi} · H=${H.toFixed(1)} m · CSF = ${r.csf.toFixed(8)} (${r.mmPerKm >= 0 ? '+' : ''}${r.mmPerKm.toFixed(1)} mm/km)`);
+    }
+  }
+
+  function updateCsfConversions() {
+    if (!lastCsfResult) return;
+    const csf = lastCsfResult.csf;
+
+    // Distancia
+    const dVal = parseFloat($('c7DistVal').value);
+    const dDir = $('c7DistDir').value;
+    const dBox = $('resC7Dist');
+    if (Number.isFinite(dVal)) {
+      const converted = dDir === 'ground_to_grid' ? dVal * csf : dVal / csf;
+      const diffM = converted - dVal;
+      const lblOut = dDir === 'ground_to_grid' ? 'Distancia en Cuadrícula UTM:' : 'Distancia en Terreno (Est. Total):';
+      dBox.className = 'result-box mt-sm';
+      dBox.innerHTML = [
+        kv(lblOut, `${converted.toFixed(4)} m`),
+        kv('Diferencia (ΔD):', `${diffM >= 0 ? '+' : ''}${diffM.toFixed(4)} m (${diffM >= 0 ? '+' : ''}${(diffM * 1000).toFixed(1)} mm)`)
+      ].join('');
+    }
+
+    // Superficie (escala al cuadrado: CSF²)
+    const aVal = parseFloat($('c7AreaVal').value);
+    const aDir = $('c7AreaDir').value;
+    const aBox = $('resC7Area');
+    if (Number.isFinite(aVal)) {
+      const csf2 = csf * csf;
+      const converted = aDir === 'ground_to_grid' ? aVal * csf2 : aVal / csf2;
+      const diffA = converted - aVal;
+      const lblOut = aDir === 'ground_to_grid' ? 'Área en Cuadrícula UTM:' : 'Área Real en Terreno:';
+      aBox.className = 'result-box mt-sm';
+      aBox.innerHTML = [
+        kv(lblOut, `${converted.toFixed(3)} m² (${(converted / 10000).toFixed(4)} ha)`),
+        kv('Factor de Área (CSF²):', csf2.toFixed(8)),
+        kv('Diferencia (ΔÁrea):', `${diffA >= 0 ? '+' : ''}${diffA.toFixed(3)} m²`)
+      ].join('');
+    }
+  }
+
   // ==================== INICIALIZACIÓN ====================
   function initCalculators() {
     // 1. Switcher principal COGO <-> Calculadoras
@@ -993,6 +1112,29 @@
       }
     });
 
+    // Calc 7: Factor de Escala Combinado (CSF)
+    $('btnC7Compute').addEventListener('click', calcCombinedScaleFactor);
+    ['c7DistVal', 'c7DistDir', 'c7AreaVal', 'c7AreaDir'].forEach(id => {
+      $(id).addEventListener('input', updateCsfConversions);
+      $(id).addEventListener('change', updateCsfConversions);
+    });
+    ['c7OrthoH', 'c7GeoidN', 'c7Ell'].forEach(id => {
+      $(id).addEventListener('change', calcCombinedScaleFactor);
+    });
+    document.querySelectorAll('[data-csf-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = CSF_PRESETS[btn.dataset.csfPreset];
+        if (!p) return;
+        $('c7UtmE').value = p.e.toFixed(3);
+        $('c7UtmN').value = p.n.toFixed(3);
+        $('c7Zone').value = p.zone;
+        $('c7Hemi').value = p.hemi;
+        $('c7OrthoH').value = p.H.toFixed(2);
+        $('c7GeoidN').value = p.N.toFixed(2);
+        calcCombinedScaleFactor();
+      });
+    });
+
     // Ejecutar cálculos iniciales de muestra para todas las calculadoras
     calcUtmToGeo();
     calcGeoToUtm();
@@ -1003,10 +1145,14 @@
     calcDmsToDd();
     calcGpsFromDate();
     loadC6HelmertDemo();
+    calcCombinedScaleFactor();
   }
 
   global.TopoCalculators = {
-    refreshGpsLanguage: () => { if (currentGpsState) renderGpsResult(currentGpsState); }
+    refreshGpsLanguage: () => {
+      if (currentGpsState) renderGpsResult(currentGpsState);
+      if (lastCsfResult) calcCombinedScaleFactor();
+    }
   };
 
   document.addEventListener('DOMContentLoaded', initCalculators);

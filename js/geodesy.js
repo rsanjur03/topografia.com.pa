@@ -382,6 +382,54 @@
     return dateToGps(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
   }
 
+  /**
+   * 6. FACTOR DE ESCALA COMBINADO (CSF: Terreno ↔ Cuadrícula UTM)
+   * Calcula k (factor de escala UTM), R_G (radio gaussiano medio en WGS84),
+   * EF (factor de elevación), CSF = k * EF, ppm y conversión de distancia/área.
+   */
+  function combinedScaleFactor(easting, northing, zone = 17, hemisphere = 'N', orthoH = 0, geoidN = 0, ellipsoidKey = 'WGS84') {
+    const { a, e2 } = getEllipsoidParams(ellipsoidKey);
+    const geo = utmToLatLon(easting, northing, zone, hemisphere, ellipsoidKey);
+    const phi = geo.lat * DEG2RAD;
+    const sinPhi = Math.sin(phi);
+    const w2 = 1 - e2 * sinPhi * sinPhi;
+
+    // Radios de curvatura meridiano (M), primer vertical (N) y Gaussiano medio (Rg)
+    const M = (a * (1 - e2)) / Math.pow(w2, 1.5);
+    const Nv = a / Math.sqrt(w2);
+    const rg = Math.sqrt(M * Nv);
+
+    const H = Number(orthoH) || 0;
+    const Ng = Number(geoidN) || 0;
+    const h = H + Ng; // Altura elipsoidal h = H + N
+
+    const k = geo.scaleFactor; // Factor de escala de cuadrícula UTM
+    const ef = rg / (rg + h);  // Factor de elevación
+    const csf = k * ef;        // Factor de escala combinado (Terreno -> UTM)
+    const invCsf = 1 / csf;    // Factor inverso (UTM -> Terreno)
+
+    return {
+      lat: geo.lat,
+      lon: geo.lon,
+      convergenceDeg: geo.convergenceDeg,
+      centralMeridian: geo.centralMeridian,
+      radiusM: M,
+      radiusN: Nv,
+      radiusGauss: rg,
+      orthoH: H,
+      geoidN: Ng,
+      ellipsoidalH: h,
+      gridScaleFactor: k,
+      gridPpm: (k - 1) * 1e6,
+      elevationFactor: ef,
+      elevationPpm: (ef - 1) * 1e6,
+      csf,
+      invCsf,
+      csfPpm: (csf - 1) * 1e6,
+      mmPerKm: (csf - 1) * 1e6
+    };
+  }
+
   function isPlausibleUtm(easting, northing) {
     return (
       Number.isFinite(easting) &&
@@ -407,6 +455,7 @@
     dateToGps,
     doyToDate,
     gpsWeekToDate,
+    combinedScaleFactor,
     isPlausibleUtm
   };
 })(window);

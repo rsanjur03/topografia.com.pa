@@ -824,6 +824,13 @@
             <small data-i18n="calc6Sub">Helmert 2D · Puntos de Control</small>
           </span>
         </button>
+        <button class="calc-nav-btn" data-calc="csf">
+          <span class="calc-icon">📏</span>
+          <span>
+            <strong data-i18n="calc7Title">Factor Escala Combinado</strong>
+            <small data-i18n="calc7Sub">Terreno ↔ UTM · CSF · ppm</small>
+          </span>
+        </button>
       </aside>
 
       <section class="calcs-main">
@@ -1212,6 +1219,114 @@
                   </table>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 7: FACTOR DE ESCALA COMBINADO (TERRENO <-> UTM) ===== -->
+        <div id="calc-csf" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc7Head">Factor de Escala Combinado (Terreno ↔ Cuadrícula UTM)</h1>
+            <p data-i18n="calc7Desc">Calcula el Factor de Escala de Cuadrícula (k), Factor de Elevación (EF) y Factor Combinado (CSF = k × EF) en WGS84 para convertir distancias y áreas entre Terreno (Estación Total) y Cuadrícula UTM (GNSS / Planos).</p>
+          </div>
+
+          <div class="card calc-card">
+            <div class="card-header">
+              <h3 data-i18n="c7PointTitle">1. Ubicación y Elevación del Proyecto</h3>
+              <div class="quick-pills">
+                <button type="button" class="chip-btn" data-csf-preset="david">David (48m)</button>
+                <button type="button" class="chip-btn" data-csf-preset="boquete">Boquete (1200m)</button>
+                <button type="button" class="chip-btn" data-csf-preset="volcan">Volcán (1450m)</button>
+                <button type="button" class="chip-btn" data-csf-preset="panama">Panamá (15m)</button>
+              </div>
+            </div>
+
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span>Este UTM (X) [m]</span>
+                <input id="c7UtmE" type="number" step="0.001" value="342527.835" />
+              </label>
+              <label class="field">
+                <span>Norte UTM (Y) [m]</span>
+                <input id="c7UtmN" type="number" step="0.001" value="932597.318" />
+              </label>
+              <label class="field">
+                <span>Zona UTM / Hemisferio</span>
+                <div class="grid-2">
+                  <input id="c7Zone" type="number" min="1" max="60" value="17" />
+                  <select id="c7Hemi">
+                    <option value="N" selected>N</option>
+                    <option value="S">S</option>
+                  </select>
+                </div>
+              </label>
+            </div>
+
+            <div class="grid-3 mt-sm">
+              <label class="field">
+                <span data-i18n="lblOrthoH">Elevación Ortométrica H (msnm) [m]</span>
+                <input id="c7OrthoH" type="number" step="0.01" value="48.50" />
+              </label>
+              <label class="field">
+                <span data-i18n="lblGeoidN">Ondulación Geoidal N (EGM) [m]</span>
+                <input id="c7GeoidN" type="number" step="0.01" value="7.50" />
+              </label>
+              <label class="field">
+                <span data-i18n="lblEllipsoid">Elipsoide</span>
+                <select id="c7Ell">
+                  <option value="WGS84" selected>WGS84</option>
+                  <option value="CLARKE1866">Clarke 1866 (NAD27)</option>
+                </select>
+              </label>
+            </div>
+
+            <button id="btnC7Compute" type="button" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcCsf">Calcular Factor de Escala Combinado</button>
+
+            <!-- KPI Cards de factores -->
+            <div class="gps-kpi-grid mt-sm" id="c7KpiGrid"></div>
+            <div id="resC7Details" class="result-box mt-sm"></div>
+          </div>
+
+          <!-- Card 2: Conversor de Distancias y Áreas Terreno <-> UTM -->
+          <div class="calc-grid-2 mt-sm">
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="c7DistConvTitle">2. Convertir Distancia (Terreno ↔ UTM)</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span data-i18n="lblDirection">Dirección</span>
+                  <select id="c7DistDir">
+                    <option value="ground_to_grid" selected>Terreno → Cuadrícula UTM (× CSF)</option>
+                    <option value="grid_to_ground">Cuadrícula UTM → Terreno (÷ CSF)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="lblDistM">Distancia [m]</span>
+                  <input id="c7DistVal" type="number" step="0.001" value="1000.000" />
+                </label>
+              </div>
+              <div id="resC7Dist" class="result-box mt-sm"></div>
+            </div>
+
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="c7AreaConvTitle">3. Convertir Superficie (Terreno ↔ UTM)</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span data-i18n="lblDirection">Dirección</span>
+                  <select id="c7AreaDir">
+                    <option value="ground_to_grid" selected>Terreno → Cuadrícula UTM (× CSF²)</option>
+                    <option value="grid_to_ground">Cuadrícula UTM → Terreno (÷ CSF²)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="statAreaM2">Área [m²]</span>
+                  <input id="c7AreaVal" type="number" step="0.01" value="10000.00" />
+                </label>
+              </div>
+              <div id="resC7Area" class="result-box mt-sm"></div>
             </div>
           </div>
         </div>
