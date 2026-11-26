@@ -1348,17 +1348,95 @@
       showToast(`${res.points.length} puntos importados correctamente`);
     });
 
-    // ==================== MODAL EXPORTAR DXF ====================
+    // ==================== MODAL EXPORTAR PLANO ANATI (DXF / PDF) ====================
     const dxfDialog = $('dxfDialog');
+
+    const ANATI_STORAGE_KEY = 'topo_anati_profile_v1';
+    const anatiFieldIds = {
+      provincia: 'anatiProvincia',
+      distrito: 'anatiDistrito',
+      corregimiento: 'anatiCorregimiento',
+      lugar: 'anatiLugar',
+      tipoPlano: 'anatiTipoPlano',
+      folioReal: 'anatiFolio',
+      codUbicacion: 'anatiCodUbic',
+      propietario: 'anatiPropietario',
+      cedPropietario: 'anatiCedProp',
+      favorDe: 'anatiFavorDe',
+      cedFavorDe: 'anatiCedFavor',
+      areaInscrita: 'anatiAreaInscrita',
+      profTitulo: 'anatiProfTitulo',
+      profNombre: 'anatiProfNombre',
+      profCedula: 'anatiProfCedula',
+      profLicencia: 'anatiProfLicencia',
+      scale: 'anatiScale',
+      fecha: 'anatiFecha',
+      ref: 'anatiRef',
+      hojaIgn: 'anatiHojaIgn',
+      equipo: 'anatiEquipo',
+      monumentacion: 'anatiMonumentacion',
+      planoRef: 'anatiPlanoRef',
+      notaExtra: 'anatiNotaExtra'
+    };
+
+    const loadSavedAnatiProfile = () => {
+      try {
+        const raw = localStorage.getItem(ANATI_STORAGE_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        for (const [k, id] of Object.entries(anatiFieldIds)) {
+          if (saved[k] !== undefined && $(id)) $(id).value = saved[k];
+        }
+      } catch {}
+    };
+
+    const readAnatiForm = () => {
+      const data = {};
+      for (const [k, id] of Object.entries(anatiFieldIds)) {
+        data[k] = $(id) ? $(id).value.trim() : '';
+      }
+      if (data.scale === 'auto') data.scale = null;
+      try {
+        // Persistir datos recurrentes del profesional y ubicación
+        localStorage.setItem(ANATI_STORAGE_KEY, JSON.stringify({
+          provincia: data.provincia,
+          distrito: data.distrito,
+          corregimiento: data.corregimiento,
+          lugar: data.lugar,
+          profTitulo: data.profTitulo,
+          profNombre: data.profNombre,
+          profCedula: data.profCedula,
+          profLicencia: data.profLicencia,
+          hojaIgn: data.hojaIgn,
+          equipo: data.equipo,
+          monumentacion: data.monumentacion
+        }));
+      } catch {}
+      return data;
+    };
+
+    loadSavedAnatiProfile();
+
+    // Sub-pestañas dentro del modal DXF/PDF
+    $('dxfModalTabs').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      $('dxfModalTabs').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const isAnatiTab = btn.dataset.dxfTab === 'anati';
+      $('dxfTabAnati').classList.toggle('hidden', !isAnatiTab);
+      $('dxfTabLayers').classList.toggle('hidden', isAnatiTab);
+    });
+
     $('btnOpenDxf').addEventListener('click', () => {
       if (state.points.length === 0) {
-        return showToast('Agrega o importa puntos antes de exportar a DXF.');
+        return showToast('Agrega o importa puntos antes de exportar el plano.');
       }
-      const cleanName = (state.projectName || 'levantamiento').replace(/[^a-zA-Z0-9_-]/g, '_');
-      $('dxfFilename').value = `${cleanName}.dxf`;
+      const cleanName = (state.projectName || 'Plano_ANATI').replace(/[^a-zA-Z0-9_-]/g, '_');
+      $('dxfFilename').value = cleanName;
       const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
-      const lotNote = (state.lotDivision && state.lotDivision.ok) ? ` + ${state.lotDivision.lots.length} cuadros de lotes` : '';
-      $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${metrics.legs.length} lados · Área: ${metrics.areaM2.toFixed(2)} m²${lotNote}`;
+      const lotNote = (state.lotDivision && state.lotDivision.ok) ? ` + ${state.lotDivision.lots.length} lotes` : '';
+      $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${DXF.formatAnatiArea(metrics.areaM2)}${lotNote}`;
       dxfDialog.showModal();
     });
 
@@ -1366,25 +1444,48 @@
       $('dxfScaleVal').textContent = `${Number(e.target.value).toFixed(1)}x`;
     });
 
+    const getExportOpts = () => ({
+      layoutMode: $('dxfLayoutMode').value || 'anati',
+      paperSize: $('pdfPaperSize').value || 'anati',
+      includePolygon: $('dxfOptPoly').checked,
+      includePoints: $('dxfOptPts').checked,
+      includeBearings: $('dxfOptBearings').checked,
+      includeAreaLabel: $('dxfOptArea').checked,
+      includeTable: $('dxfOptTable').checked,
+      includeNorthArrow: $('dxfOptNorth').checked,
+      includeGrid: $('dxfOptGrid').checked,
+      textScale: parseFloat($('dxfTextScale').value) || 1.0,
+      anati: readAnatiForm()
+    });
+
     $('btnDownloadDxf').addEventListener('click', () => {
       try {
-        const dxfContent = DXF.generateDXF(state, {
-          includePolygon: $('dxfOptPoly').checked,
-          includePoints: $('dxfOptPts').checked,
-          includeBearings: $('dxfOptBearings').checked,
-          includeAreaLabel: $('dxfOptArea').checked,
-          includeTable: $('dxfOptTable').checked,
-          includeNorthArrow: $('dxfOptNorth').checked,
-          includeGrid: $('dxfOptGrid').checked,
-          textScale: parseFloat($('dxfTextScale').value) || 1.0
-        });
-        let filename = $('dxfFilename').value.trim() || 'levantamiento.dxf';
-        if (!filename.toLowerCase().endsWith('.dxf')) filename += '.dxf';
+        const opts = getExportOpts();
+        const dxfContent = DXF.generateDXF(state, opts);
+        let base = ($('dxfFilename').value.trim() || 'Plano_ANATI').replace(/\.(dxf|pdf)$/i, '');
+        const filename = `${base}.dxf`;
         IO.downloadFile(filename, dxfContent, 'application/dxf');
         dxfDialog.close();
-        showToast(`DXF "${filename}" descargado con cuadro de datos de campo`);
+        showToast(opts.layoutMode === 'anati'
+          ? `DXF ANATI "${filename}" descargado (Model 1:1 + Layout 620×470 mm)`
+          : `DXF Simple "${filename}" descargado`);
       } catch (err) {
         showToast(`Error al generar DXF: ${err.message}`);
+      }
+    });
+
+    $('btnDownloadPdf').addEventListener('click', () => {
+      try {
+        if (!global.TopoPDF) throw new Error('Módulo PDF no disponible.');
+        const opts = getExportOpts();
+        const pdfContent = global.TopoPDF.generateAnatiPDF(state, opts);
+        let base = ($('dxfFilename').value.trim() || 'Plano_ANATI').replace(/\.(dxf|pdf)$/i, '');
+        const filename = `${base}_ANATI.pdf`;
+        IO.downloadFile(filename, pdfContent, 'application/pdf');
+        dxfDialog.close();
+        showToast(`PDF Vectorial ANATI "${filename}" descargado`);
+      } catch (err) {
+        showToast(`Error al generar PDF: ${err.message}`);
       }
     });
 

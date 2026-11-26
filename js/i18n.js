@@ -14,7 +14,7 @@
       btnDrawMap: 'Dibujar en Mapa',
       btnEditPts: 'Editar Puntos',
       btnImport: 'Importar CSV/TXT',
-      btnExportDxf: 'Exportar DXF',
+      btnExportDxf: 'Plano DXF / PDF',
 
       tabTraverse: 'Poligonal',
       tabCogo: 'COGO',
@@ -185,10 +185,16 @@
       btnCancel: 'Cancelar',
       btnConfirmImport: 'Importar Puntos',
 
-      modDxfTitle: 'Exportar Dibujo a DXF (AutoCAD / Civil 3D)',
-      dxfNote: 'Genera un archivo DXF estándar (R12/AC1009) en coordenadas reales (metros) con capas separadas y el Cuadro de Datos de Campo dibujado vectorialmente.',
-      lblFilename: 'Nombre del archivo',
-      lblTextScale: 'Escala de textos',
+      modDxfTitle: 'Plano ANATI · Exportar DXF y PDF',
+      tabAnatiForm: 'Pie de Plano ANATI',
+      tabDxfLayers: 'Capas y Papel',
+      anatiFormNote: 'Completa los datos requeridos por ANATI Panamá para rellenar automáticamente el cajetín, notas técnicas, cuadro DATOS DE CAMPO y detalle de áreas en el DXF (Layout1) y en el PDF vectorial.',
+      secAnatiLoc: 'Ubicación Política (República de Panamá)',
+      secAnatiParcel: 'Datos de la Finca / Operación',
+      secAnatiProf: 'Profesional Idóneo y Escala (se guarda automáticamente)',
+      secAnatiNotes: 'Notas Técnicas y Hoja Cartográfica',
+      lblFilename: 'Nombre base del archivo',
+      lblTextScale: 'Escala de textos en Model Space',
       dxfOptPoly: 'Poligonal / Linderos',
       dxfOptPts: 'Puntos, vértices e IDs',
       dxfOptBearings: 'Rumbos y distancias rotados',
@@ -196,7 +202,8 @@
       dxfOptTable: 'Cuadro de Datos de Campo',
       dxfOptNorth: 'Flecha Norte vectorial',
       dxfOptGrid: 'Cuadrícula y cruces de coordenadas',
-      btnDownloadDxf: 'Descargar Archivo .DXF'
+      btnDownloadPdf: 'Descargar PDF (Plano ANATI)',
+      btnDownloadDxf: 'Descargar .DXF'
     },
     en: {
       brandSub: 'Graphical COGO Calculator',
@@ -207,7 +214,7 @@
       btnDrawMap: 'Draw on Map',
       btnEditPts: 'Edit Points',
       btnImport: 'Import CSV/TXT',
-      btnExportDxf: 'Export DXF',
+      btnExportDxf: 'Plan DXF / PDF',
 
       tabTraverse: 'Traverse',
       tabCogo: 'COGO',
@@ -379,10 +386,16 @@
       btnCancel: 'Cancel',
       btnConfirmImport: 'Import Points',
 
-      modDxfTitle: 'Export Drawing to DXF (AutoCAD / Civil 3D)',
-      dxfNote: 'Generates a standard DXF (R12/AC1009) in real-world coordinates (meters) with organized layers and a vector Field Data Table.',
-      lblFilename: 'File name',
-      lblTextScale: 'Text scale',
+      modDxfTitle: 'ANATI Plan · Export DXF & PDF',
+      tabAnatiForm: 'ANATI Title Block',
+      tabDxfLayers: 'Layers & Paper',
+      anatiFormNote: 'Fill in the ANATI Panama fields to populate the official title block, technical notes, DATOS DE CAMPO table, and area summary in both DXF (Layout1) and Vector PDF.',
+      secAnatiLoc: 'Political Location (Republic of Panama)',
+      secAnatiParcel: 'Parcel / Operation Details',
+      secAnatiProf: 'Licensed Surveyor & Scale (auto-saved)',
+      secAnatiNotes: 'Technical Notes & IGN Map Sheet',
+      lblFilename: 'Base file name',
+      lblTextScale: 'Model Space text scale',
       dxfOptPoly: 'Traverse / Boundaries',
       dxfOptPts: 'Points, vertices & IDs',
       dxfOptBearings: 'Rotated bearings & distances',
@@ -390,7 +403,8 @@
       dxfOptTable: 'Field Data Table',
       dxfOptNorth: 'Vector North arrow',
       dxfOptGrid: 'Coordinate grid & ticks',
-      btnDownloadDxf: 'Download .DXF File'
+      btnDownloadPdf: 'Download Vector PDF (ANATI)',
+      btnDownloadDxf: 'Download .DXF'
     }
   };
 

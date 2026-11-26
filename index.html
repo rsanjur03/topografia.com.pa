@@ -60,9 +60,9 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <span data-i18n="btnImport">Importar CSV/TXT</span>
         </button>
-        <button id="btnOpenDxf" class="btn btn-primary" title="Exportar dibujo y cuadro de datos a DXF">
+        <button id="btnOpenDxf" class="btn btn-primary" title="Generar Plano ANATI (DXF con Layout y PDF Vectorial)">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span data-i18n="btnExportDxf">Exportar DXF</span>
+          <span data-i18n="btnExportDxf">Plano DXF / PDF</span>
         </button>
         <button id="btnClearAll" class="icon-btn danger-hover" title="Limpiar proyecto" aria-label="Limpiar proyecto">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
@@ -802,43 +802,215 @@
     </div>
   </dialog>
 
-  <!-- ==================== MODAL EXPORTAR DXF ==================== -->
-  <dialog id="dxfDialog" class="modal">
+  <!-- ==================== MODAL EXPORTAR PLANO ANATI (DXF / PDF) ==================== -->
+  <dialog id="dxfDialog" class="modal modal-wide">
     <div class="modal-head">
-      <h2 data-i18n="modDxfTitle">Exportar Dibujo a DXF (AutoCAD / Civil 3D)</h2>
+      <div class="row-actions">
+        <h2 data-i18n="modDxfTitle">Plano ANATI · Exportar DXF y PDF</h2>
+        <div class="segmented" id="dxfModalTabs">
+          <button type="button" class="seg-btn active" data-dxf-tab="anati" data-i18n="tabAnatiForm">Pie de Plano ANATI</button>
+          <button type="button" class="seg-btn" data-dxf-tab="layers" data-i18n="tabDxfLayers">Capas y Papel</button>
+        </div>
+      </div>
       <button class="icon-btn modal-close" data-close="dxfDialog" aria-label="Cerrar">✕</button>
     </div>
-    <div class="modal-body">
-      <p class="modal-note" data-i18n="dxfNote">
-        Genera un archivo DXF estándar (R12/AC1009) en coordenadas reales (metros) con capas separadas y el Cuadro de Datos de Campo dibujado vectorialmente.
-      </p>
 
-      <div class="grid-2 mt-sm">
-        <label class="field">
-          <span data-i18n="lblFilename">Nombre del archivo</span>
-          <input id="dxfFilename" type="text" value="Finca_Chiriqui_17N.dxf" />
-        </label>
-        <label class="field">
-          <span><span data-i18n="lblTextScale">Escala de textos</span> (<span id="dxfScaleVal">1.0x</span>)</span>
+    <div class="modal-body">
+      <!-- SUB-TAB 1: FORMULARIO PIE DE PLANO ANATI -->
+      <div id="dxfTabAnati">
+        <p class="modal-note" data-i18n="anatiFormNote">
+          Completa los datos requeridos por <strong>ANATI Panamá</strong> para rellenar automáticamente el cajetín, notas técnicas, cuadro <code>DATOS DE CAMPO</code> y detalle de áreas en el <strong>DXF (Layout1)</strong> y en el <strong>PDF vectorial</strong>.
+        </p>
+
+        <div class="form-section-title mt-sm" data-i18n="secAnatiLoc">Ubicación Política (República de Panamá)</div>
+        <div class="grid-4 mt-xs">
+          <label class="field">
+            <span>Provincia</span>
+            <input id="anatiProvincia" type="text" value="CHIRIQUI" />
+          </label>
+          <label class="field">
+            <span>Distrito</span>
+            <input id="anatiDistrito" type="text" value="DAVID" />
+          </label>
+          <label class="field">
+            <span>Corregimiento</span>
+            <input id="anatiCorregimiento" type="text" value="DAVID" />
+          </label>
+          <label class="field">
+            <span>Lugar</span>
+            <input id="anatiLugar" type="text" value="DAVID" />
+          </label>
+        </div>
+
+        <div class="form-section-title mt-sm" data-i18n="secAnatiParcel">Datos de la Finca / Operación</div>
+        <div class="grid-3 mt-xs">
+          <label class="field">
+            <span>Tipo de Plano / Operación</span>
+            <select id="anatiTipoPlano">
+              <option value="GLOBO DE TERRENO A SEGREGAR">Globo de terreno a segregar</option>
+              <option value="LEVANTAMIENTO TOPOGRAFICO" selected>Levantamiento topográfico</option>
+              <option value="RECTIFICACION DE AREA Y LINDEROS">Rectificación de área y linderos</option>
+              <option value="LOTIFICACION DE FINCA">Lotificación / División en lotes</option>
+              <option value="UNIFICACION DE FINCAS">Unificación de fincas</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Folio Real / Finca N°</span>
+            <input id="anatiFolio" type="text" placeholder="Ej. 3248" />
+          </label>
+          <label class="field">
+            <span>Código de Ubicación</span>
+            <input id="anatiCodUbic" type="text" placeholder="Ej. 4201" />
+          </label>
+        </div>
+        <div class="grid-2 mt-xs">
+          <label class="field">
+            <span>Propietario(s)</span>
+            <input id="anatiPropietario" type="text" placeholder="Nombre del propietario" />
+          </label>
+          <label class="field">
+            <span>Cédula / RUC Propietario</span>
+            <input id="anatiCedProp" type="text" placeholder="Ej. 4-000-000" />
+          </label>
+        </div>
+        <div class="grid-3 mt-xs">
+          <label class="field">
+            <span>A Favor de (Adquiriente)</span>
+            <input id="anatiFavorDe" type="text" placeholder="Opcional (si aplica)" />
+          </label>
+          <label class="field">
+            <span>Cédula Adquiriente</span>
+            <input id="anatiCedFavor" type="text" placeholder="Ej. 4-000-000" />
+          </label>
+          <label class="field">
+            <span>Área Inscrita Finca Madre (m²)</span>
+            <input id="anatiAreaInscrita" type="number" step="0.01" placeholder="Opcional (calcula Resto Libre)" />
+          </label>
+        </div>
+
+        <div class="form-section-title mt-sm" data-i18n="secAnatiProf">Profesional Idóneo y Escala (se guarda automáticamente)</div>
+        <div class="grid-4 mt-xs">
+          <label class="field">
+            <span>Cargo / Título</span>
+            <select id="anatiProfTitulo">
+              <option value="ING. CIVIL" selected>ING. CIVIL</option>
+              <option value="AGRIMENSOR">AGRIMENSOR</option>
+              <option value="TOPOGRAFO">TOPOGRAFO</option>
+            </select>
+          </label>
+          <label class="field" style="grid-column: span 2;">
+            <span>Nombre del Profesional</span>
+            <input id="anatiProfNombre" type="text" placeholder="Nombre completo" />
+          </label>
+          <label class="field">
+            <span>Cédula Profesional</span>
+            <input id="anatiProfCedula" type="text" placeholder="Ej. 4-716-307" />
+          </label>
+        </div>
+        <div class="grid-4 mt-xs">
+          <label class="field">
+            <span>Licencia / Idoneidad</span>
+            <input id="anatiProfLicencia" type="text" placeholder="Ej. 2007-006-076" />
+          </label>
+          <label class="field">
+            <span>Escala del Plano</span>
+            <select id="anatiScale">
+              <option value="auto" selected>Automática</option>
+              <option value="100">1 : 100</option>
+              <option value="200">1 : 200</option>
+              <option value="250">1 : 250</option>
+              <option value="500">1 : 500</option>
+              <option value="750">1 : 750</option>
+              <option value="1000">1 : 1,000</option>
+              <option value="1500">1 : 1,500</option>
+              <option value="2000">1 : 2,000</option>
+              <option value="5000">1 : 5,000</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Fecha</span>
+            <input id="anatiFecha" type="text" value="NOVIEMBRE 2026" />
+          </label>
+          <label class="field">
+            <span>Referencia (REF)</span>
+            <input id="anatiRef" type="text" placeholder="Ej. 2026-001" />
+          </label>
+        </div>
+
+        <div class="form-section-title mt-sm" data-i18n="secAnatiNotes">Notas Técnicas y Hoja Cartográfica</div>
+        <div class="grid-3 mt-xs">
+          <label class="field">
+            <span>Hoja IGN (1:50,000)</span>
+            <input id="anatiHojaIgn" type="text" value="3642 II NE" />
+          </label>
+          <label class="field">
+            <span>Equipo Utilizado</span>
+            <input id="anatiEquipo" type="text" value="GNSS RTK / ESTACION TOTAL" />
+          </label>
+          <label class="field">
+            <span>Monumentación</span>
+            <input id="anatiMonumentacion" type="text" value='VARILLA DE ACERO DE 1/2"' />
+          </label>
+        </div>
+        <div class="grid-2 mt-xs">
+          <label class="field">
+            <span>Plano de Referencia</span>
+            <input id="anatiPlanoRef" type="text" placeholder="Opcional (ej. 42-4937)" />
+          </label>
+          <label class="field">
+            <span>Nota Adicional</span>
+            <input id="anatiNotaExtra" type="text" placeholder="Observaciones adicionales para ANATI" />
+          </label>
+        </div>
+      </div>
+
+      <!-- SUB-TAB 2: CAPAS, FORMATO DXF Y TAMAÑO DE PAPEL PDF -->
+      <div id="dxfTabLayers" class="hidden">
+        <div class="grid-3">
+          <label class="field">
+            <span data-i18n="lblFilename">Nombre base del archivo</span>
+            <input id="dxfFilename" type="text" value="Finca_Chiriqui_17N" />
+          </label>
+          <label class="field">
+            <span>Estructura del DXF</span>
+            <select id="dxfLayoutMode">
+              <option value="anati" selected>Plano ANATI (Model 1:1 + Layout 620×470mm)</option>
+              <option value="simple">DXF Simple (Solo Model Space 1:1)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Tamaño de Hoja PDF</span>
+            <select id="pdfPaperSize">
+              <option value="anati" selected>Estándar ANATI (620 × 470 mm)</option>
+              <option value="archd">ARCH D (36" × 24")</option>
+              <option value="tabloid">Tabloide (17" × 11")</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="field mt-sm">
+          <span><span data-i18n="lblTextScale">Escala de textos en Model Space</span> (<span id="dxfScaleVal">1.0x</span>)</span>
           <input id="dxfTextScale" type="range" min="0.5" max="2.5" step="0.1" value="1.0" />
         </label>
-      </div>
 
-      <div class="checklist-grid mt-sm">
-        <label class="check-card"><input id="dxfOptPoly" type="checkbox" checked /><span><span data-i18n="dxfOptPoly">Poligonal / Linderos</span> (<code>TOPO_POLIGONAL</code>)</span></label>
-        <label class="check-card"><input id="dxfOptPts" type="checkbox" checked /><span><span data-i18n="dxfOptPts">Puntos, vértices e IDs</span> (<code>TOPO_PUNTOS</code>)</span></label>
-        <label class="check-card"><input id="dxfOptBearings" type="checkbox" checked /><span><span data-i18n="dxfOptBearings">Rumbos y distancias rotados</span> (<code>TOPO_RUMBOS_DIST</code>)</span></label>
-        <label class="check-card"><input id="dxfOptArea" type="checkbox" checked /><span><span data-i18n="dxfOptArea">Área y perímetro en centroide</span> (<code>TOPO_AREA_CENTRO</code>)</span></label>
-        <label class="check-card highlight"><input id="dxfOptTable" type="checkbox" checked /><span><strong data-i18n="dxfOptTable">Cuadro de Datos de Campo</strong> (<code>TOPO_CUADRO_DATOS</code>)</span></label>
-        <label class="check-card"><input id="dxfOptNorth" type="checkbox" checked /><span><span data-i18n="dxfOptNorth">Flecha Norte vectorial</span> (<code>TOPO_NORTE</code>)</span></label>
-        <label class="check-card"><input id="dxfOptGrid" type="checkbox" checked /><span><span data-i18n="dxfOptGrid">Cuadrícula y cruces de coordenadas</span> (<code>TOPO_CUADRICULA</code>)</span></label>
+        <div class="checklist-grid mt-sm">
+          <label class="check-card"><input id="dxfOptPoly" type="checkbox" checked /><span><span data-i18n="dxfOptPoly">Poligonal / Linderos</span> (<code>TOPO_POLIGONAL</code>)</span></label>
+          <label class="check-card"><input id="dxfOptPts" type="checkbox" checked /><span><span data-i18n="dxfOptPts">Puntos, vértices e IDs</span> (<code>TOPO_PUNTOS</code>)</span></label>
+          <label class="check-card"><input id="dxfOptBearings" type="checkbox" checked /><span><span data-i18n="dxfOptBearings">Rumbos y distancias rotados</span> (<code>TOPO_RUMBOS_DIST</code>)</span></label>
+          <label class="check-card"><input id="dxfOptArea" type="checkbox" checked /><span><span data-i18n="dxfOptArea">Área y perímetro en centroide</span> (<code>TOPO_AREA_CENTRO</code>)</span></label>
+          <label class="check-card highlight"><input id="dxfOptTable" type="checkbox" checked /><span><strong data-i18n="dxfOptTable">Cuadro de Datos de Campo</strong> (<code>DATOS_DE_CAMPO</code>)</span></label>
+          <label class="check-card"><input id="dxfOptNorth" type="checkbox" checked /><span><span data-i18n="dxfOptNorth">Flecha Norte vectorial</span> (<code>TOPO_NORTE</code>)</span></label>
+          <label class="check-card"><input id="dxfOptGrid" type="checkbox" checked /><span><span data-i18n="dxfOptGrid">Cuadrícula y cruces de coordenadas</span> (<code>TOPO_CUADRICULA</code>)</span></label>
+        </div>
       </div>
     </div>
+
     <div class="modal-foot">
       <span id="dxfSummaryMeta" class="muted-meta"></span>
       <div class="row-actions">
         <button class="btn btn-ghost" data-close="dxfDialog" data-i18n="btnCancel">Cancelar</button>
-        <button id="btnDownloadDxf" class="btn btn-primary" data-i18n="btnDownloadDxf">Descargar Archivo .DXF</button>
+        <button id="btnDownloadPdf" class="btn btn-secondary" data-i18n="btnDownloadPdf">Descargar PDF (Plano ANATI)</button>
+        <button id="btnDownloadDxf" class="btn btn-primary" data-i18n="btnDownloadDxf">Descargar .DXF</button>
       </div>
     </div>
   </dialog>
@@ -851,6 +1023,7 @@
   <script src="js/geodesy.js"></script>
   <script src="js/cogo.js"></script>
   <script src="js/dxf.js"></script>
+  <script src="js/pdf.js"></script>
   <script src="js/io.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/map.js"></script>
