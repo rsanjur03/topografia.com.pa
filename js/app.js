@@ -1,0 +1,1067 @@
+/**
+ * app.js — Controlador principal de topografia.com.pa (Calculadora Gráfica COGO)
+ */
+(function (global) {
+  'use strict';
+
+  const C = global.TopoCOGO;
+  const Geo = global.TopoGeodesy;
+  const IO = global.TopoIO;
+  const DXF = global.TopoDXF;
+
+  // ==================== ESTADO DEL PROYECTO ====================
+  const state = {
+    projectName: 'Lote_Panama_01',
+    crsMode: 'utm',          // 'utm' | 'local'
+    utmZone: 17,
+    utmHemi: 'N',
+    crsLabel: 'UTM WGS84 ZONA 17N (PANAMA)',
+    points: [],
+    closed: true,
+    curves: [],
+    auxLines: [],
+    closureInfo: null,
+    traverseMode: 'bearing', // 'bearing' | 'azimuth' | 'coords'
+    labelsVisible: true
+  };
+
+  let mapEngine = null;
+  let toastTimer = null;
+
+  // ==================== UTILIDADES UI ====================
+  const $ = (id) => document.getElementById(id);
+
+  function showToast(msg, duration = 3200) {
+    const el = $('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.add('hidden'), duration);
+  }
+
+  function nextAutoPointId() {
+    let maxNum = 0;
+    for (const p of state.points) {
+      const m = String(p.id).match(/(\d+)$/);
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+    }
+    return `P${Math.max(maxNum + 1, state.points.length + 1)}`;
+  }
+
+  function getPointByIndex(idx) {
+    const i = parseInt(idx, 10);
+    return Number.isFinite(i) && state.points[i] ? state.points[i] : null;
+  }
+
+  function addPoint(pt, fit = false) {
+    state.points.push({
+      id: String(pt.id || nextAutoPointId()).trim(),
+      e: Number(pt.e),
+      n: Number(pt.n),
+      z: Number(pt.z) || 0,
+      desc: String(pt.desc || '').trim()
+    });
+    state.closureInfo = null;
+    refreshAll(fit);
+  }
+
+  // ==================== ACTUALIZACIÓN GLOBAL ====================
+  function refreshAll(fitBounds = false) {
+    // 1. Actualizar contadores y selects de puntos
+    $('badgePtCount').textContent = String(state.points.length);
+    $('travNextId').value = nextAutoPointId();
+    $('dirNewId').value = `R${state.points.length + 1}`;
+
+    populatePointSelects();
+    updateMetrics();
+    renderTables();
+
+    // 2. Renderizar en el mapa / CAD
+    if (mapEngine) {
+      mapEngine.render({
+        points: state.points,
+        closed: state.closed,
+        curves: state.curves,
+        auxLines: state.auxLines
+      });
+      if (fitBounds) mapEngine.fitBounds();
+    }
+  }
+
+  function populatePointSelects() {
+    const travSel = $('travFromSelect');
+    const prevTrav = travSel.value;
+    travSel.innerHTML = '';
+
+    if (state.points.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = '(Fije coordenada inicial primero)';
+      travSel.appendChild(opt);
+    } else {
+      state.points.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = `${p.id} (E:${p.e.toFixed(2)}, N:${p.n.toFixed(2)})`;
+        travSel.appendChild(opt);
+      });
+      // Por defecto seleccionar siempre el último punto agregado para avanzar la poligonal
+      travSel.value = String(state.points.length - 1);
+    }
+
+    // Todos los selects COGO (.pt-select)
+    document.querySelectorAll('.pt-select').forEach((sel, sIdx) => {
+      const prev = sel.value;
+      sel.innerHTML = '';
+      state.points.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = `${p.id} — (${p.e.toFixed(2)}, ${p.n.toFixed(2)})`;
+        sel.appendChild(opt);
+      });
+      if (prev && state.points[Number(prev)]) {
+        sel.value = prev;
+      } else if (state.points.length > 1 && (sel.id.endsWith('B') || sel.id.endsWith('2'))) {
+        sel.value = '1';
+      } else if (state.points.length > 0) {
+        sel.value = '0';
+      }
+    });
+  }
+
+  function updateMetrics() {
+    const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
+    $('statAreaM2').textContent = metrics.areaM2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    $('statAreaHa').textContent = metrics.areaHa.toFixed(4);
+    $('statPerim').textContent = metrics.perimeter.toFixed(3);
+    $('statVaras').textContent = metrics.areaVaras2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function renderTables() {
+    const closed = state.closed && state.points.length >= 3;
+    const metrics = C.polygonMetrics(state.points, closed);
+
+    // 1. Cuadro de Datos de Campo
+    const fieldBody = $('fieldTableBody');
+    fieldBody.innerHTML = '';
+    if (metrics.legs.length === 0) {
+      fieldBody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:14px;">Agrega al menos 2 puntos para ver el cuadro de campo</td></tr>`;
+    } else {
+      for (const leg of metrics.legs) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${leg.fromId}</strong></td>
+          <td>${leg.toId}</td>
+          <td>${leg.bearing}</td>
+          <td>${leg.dist.toFixed(3)}</td>
+          <td>${leg.from.n.toFixed(3)}</td>
+          <td>${leg.from.e.toFixed(3)}</td>
+        `;
+        fieldBody.appendChild(tr);
+      }
+      if (!closed && state.points.length > 0) {
+        const last = state.points[state.points.length - 1];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td><strong>${last.id}</strong></td><td>-</td><td>FIN</td><td>-</td><td>${last.n.toFixed(3)}</td><td>${last.e.toFixed(3)}</td>`;
+        fieldBody.appendChild(tr);
+      }
+    }
+
+    // 2. Lista de Puntos
+    const ptsBody = $('pointsTableBody');
+    ptsBody.innerHTML = '';
+    if (state.points.length === 0) {
+      ptsBody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:14px;">Sin puntos cargados</td></tr>`;
+    } else {
+      state.points.forEach((p, idx) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>${p.id}</strong></td>
+          <td>${p.e.toFixed(3)}</td>
+          <td>${p.n.toFixed(3)}</td>
+          <td>${(Number(p.z) || 0).toFixed(2)}</td>
+          <td>
+            <button class="tbl-act-btn" data-zoom="${idx}" title="Centrar en mapa">🎯</button>
+            <button class="tbl-act-btn del" data-del="${idx}" title="Eliminar punto">✕</button>
+          </td>
+        `;
+        ptsBody.appendChild(tr);
+      });
+    }
+  }
+
+  // ==================== POLIGONAL DE EJEMPLO (CIUDAD DE PANAMÁ, UTM 17N) ====================
+  function loadPanamaDemo() {
+    // Parcela realista en zona urbana de Ciudad de Panamá (UTM WGS84 Zona 17N)
+    state.crsMode = 'utm';
+    state.utmZone = 17;
+    state.utmHemi = 'N';
+    state.crsLabel = 'UTM WGS84 ZONA 17N (PANAMA)';
+    $('crsSelect').value = 'utm17N';
+    $('hudCrsBadge').textContent = 'UTM WGS84 · 17N';
+    $('projectNameInput').value = 'Finca_Panama_17N';
+    state.projectName = 'Finca_Panama_17N';
+
+    const p1 = { id: 'P1', e: 663240.000, n: 993440.000, z: 14.50, desc: 'MOJON 1' };
+    const leg1 = C.direct(p1, C.bearingToAzimuth('N', 'E', C.dmsToDeg(62, 15, 20)), 58.40);
+    const p2 = { id: 'P2', e: leg1.e, n: leg1.n, z: 14.85, desc: 'LINDERO NE' };
+    const leg2 = C.direct(p2, C.bearingToAzimuth('S', 'E', C.dmsToDeg(28, 40, 10)), 42.75);
+    const p3 = { id: 'P3', e: leg2.e, n: leg2.n, z: 14.20, desc: 'ESQUINA SE' };
+    const leg3 = C.direct(p3, C.bearingToAzimuth('S', 'W', C.dmsToDeg(61, 50, 45)), 61.15);
+    const p4 = { id: 'P4', e: leg3.e, n: leg3.n, z: 13.95, desc: 'LINDERO SW' };
+
+    state.points = [p1, p2, p3, p4];
+    state.closed = true;
+    state.curves = [];
+    state.auxLines = [];
+    state.closureInfo = null;
+    $('chkClosedPoly').checked = true;
+
+    $('initId').value = p1.id;
+    $('initE').value = p1.e.toFixed(3);
+    $('initN').value = p1.n.toFixed(3);
+    $('initZ').value = p1.z.toFixed(2);
+    $('initDesc').value = p1.desc;
+
+    mapEngine.setCRS('utm', 17, 'N');
+    refreshAll(true);
+    showToast('Poligonal de ejemplo cargada en Panamá (UTM Zona 17N)');
+  }
+
+  // ==================== MODO CAPTURA EN MAPA ====================
+  function setMapPickMode(mode) {
+    mapEngine.setPickMode(mode);
+    const banner = $('pickBanner');
+    $('btnPickInitial').classList.toggle('active', mode === 'initial');
+    $('btnMapAddPoint').classList.toggle('active', mode === 'addPoint');
+
+    if (mode === 'initial') {
+      $('pickBannerText').textContent = 'Haz clic en el mapa para fijar la Coordenada Inicial';
+      banner.classList.remove('hidden');
+    } else if (mode === 'addPoint') {
+      $('pickBannerText').textContent = 'Modo clic activo: haz clic en el mapa para agregar puntos';
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
+  // ==================== INICIALIZACIÓN DE EVENTOS ====================
+  function bindEvents() {
+    // 1. Navegación de pestañas principales
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        $(`tab-${btn.dataset.tab}`).classList.add('active');
+      });
+    });
+
+    // Sidebar móvil
+    $('btnToggleSidebar').addEventListener('click', () => {
+      $('sidebar').classList.toggle('collapsed');
+      setTimeout(() => mapEngine.invalidateSize(), 260);
+    });
+
+    // Nombre del proyecto
+    $('projectNameInput').addEventListener('input', (e) => {
+      state.projectName = e.target.value.trim() || 'Levantamiento';
+    });
+
+    // Selector CRS (UTM 17N / 18N / Local)
+    $('crsSelect').addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === 'utm17N') {
+        state.crsMode = 'utm'; state.utmZone = 17; state.utmHemi = 'N';
+        state.crsLabel = 'UTM WGS84 ZONA 17N (PANAMA)';
+        $('hudCrsBadge').textContent = 'UTM WGS84 · 17N';
+        $('hudLatLonWrap').classList.remove('hidden');
+      } else if (val === 'utm18N') {
+        state.crsMode = 'utm'; state.utmZone = 18; state.utmHemi = 'N';
+        state.crsLabel = 'UTM WGS84 ZONA 18N (PANAMA ESTE)';
+        $('hudCrsBadge').textContent = 'UTM WGS84 · 18N';
+        $('hudLatLonWrap').classList.remove('hidden');
+      } else {
+        state.crsMode = 'local';
+        state.crsLabel = 'COORDENADAS LOCALES (PLANO CAD)';
+        $('hudCrsBadge').textContent = 'SISTEMA LOCAL · CAD';
+        $('hudLatLonWrap').classList.add('hidden');
+      }
+      mapEngine.setCRS(state.crsMode, state.utmZone, state.utmHemi);
+      showToast(`Sistema cambiado a: ${state.crsLabel}`);
+    });
+
+    // Tema Claro / Oscuro
+    $('btnThemeToggle').addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      root.setAttribute('data-theme', next);
+      mapEngine.render({ points: state.points, closed: state.closed, curves: state.curves, auxLines: state.auxLines });
+      showToast(next === 'light' ? 'Modo Claro activado (ideal para campo)' : 'Modo Oscuro CAD activado');
+    });
+
+    // Botones Topbar
+    $('btnLoadDemo').addEventListener('click', loadPanamaDemo);
+    $('btnClearAll').addEventListener('click', () => {
+      state.points = [];
+      state.curves = [];
+      state.auxLines = [];
+      state.closureInfo = null;
+      $('bowditchResult').classList.add('hidden');
+      refreshAll(false);
+      showToast('Proyecto limpiado');
+    });
+
+    // Basemap Switcher
+    document.querySelectorAll('.bm-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const bm = btn.dataset.bm;
+        if (state.crsMode === 'local' && bm !== 'cad') {
+          showToast('En Sistema Local solo se usa Plano CAD. Cambia a UTM 17N/18N para ver Satelital o StreetMap.');
+          return;
+        }
+        document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        mapEngine.setBasemap(bm);
+      });
+    });
+
+    // Herramientas flotantes del mapa
+    $('btnZoomIn').addEventListener('click', () => mapEngine.zoomIn());
+    $('btnZoomOut').addEventListener('click', () => mapEngine.zoomOut());
+    $('btnFitBounds').addEventListener('click', () => mapEngine.fitBounds());
+    $('btnToggleLabels').addEventListener('click', (e) => {
+      state.labelsVisible = !state.labelsVisible;
+      e.currentTarget.classList.toggle('active', state.labelsVisible);
+      mapEngine.setLabelsVisible(state.labelsVisible);
+    });
+    $('btnMapAddPoint').addEventListener('click', () => {
+      setMapPickMode(mapEngine.pickMode === 'addPoint' ? null : 'addPoint');
+    });
+    $('btnPickInitial').addEventListener('click', () => {
+      setMapPickMode(mapEngine.pickMode === 'initial' ? null : 'initial');
+    });
+    $('btnCancelPick').addEventListener('click', () => setMapPickMode(null));
+
+    global.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && mapEngine && mapEngine.pickMode) setMapPickMode(null);
+    });
+
+    // ==================== TAB 1: POLIGONAL ====================
+    $('btnSetInitial').addEventListener('click', () => {
+      const id = $('initId').value.trim() || 'P1';
+      const e = parseFloat($('initE').value);
+      const n = parseFloat($('initN').value);
+      const z = parseFloat($('initZ').value) || 0;
+      const desc = $('initDesc').value.trim();
+      if (!Number.isFinite(e) || !Number.isFinite(n)) {
+        showToast('Ingresa coordenadas Este (X) y Norte (Y) válidas.');
+        return;
+      }
+
+      // Auto-detectar si parecen locales cuando está en UTM
+      if (state.crsMode === 'utm' && !Geo.isPlausibleUtm(e, n)) {
+        state.crsMode = 'local';
+        state.crsLabel = 'COORDENADAS LOCALES (PLANO CAD)';
+        $('crsSelect').value = 'local';
+        $('hudCrsBadge').textContent = 'SISTEMA LOCAL · CAD';
+        mapEngine.setCRS('local');
+        showToast('Coordenadas locales detectadas: cambiado automáticamente a Plano CAD.');
+      }
+
+      if (state.points.length === 0) {
+        addPoint({ id, e, n, z, desc }, true);
+      } else {
+        state.points[0] = { id, e, n, z, desc };
+        refreshAll(true);
+      }
+      showToast(`Punto inicial ${id} establecido en E:${e.toFixed(3)}, N:${n.toFixed(3)}`);
+    });
+
+    // Selector de modo de tramo (Rumbo / Azimut / Coordenadas)
+    $('traverseModeToggle').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      state.traverseMode = btn.dataset.mode;
+      $('traverseModeToggle').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      $('travBearingBox').classList.toggle('hidden', state.traverseMode !== 'bearing');
+      $('travAzimuthBox').classList.toggle('hidden', state.traverseMode !== 'azimuth');
+      $('travDistBox').classList.toggle('hidden', state.traverseMode === 'coords');
+      $('travDirectCoordsBox').classList.toggle('hidden', state.traverseMode !== 'coords');
+    });
+
+    // Sincronizar campo rápido de rumbo con los campos estructurados
+    $('travQuickDir').addEventListener('change', (e) => {
+      const parsed = C.parseDirectionString(e.target.value);
+      if (!parsed) return;
+      const b = C.azimuthToBearing(parsed.azimuth, 1);
+      $('travNS').value = b.ns;
+      $('travEW').value = b.ew;
+      $('travDeg').value = b.dms.d;
+      $('travMin').value = b.dms.m;
+      $('travSec').value = b.dms.s;
+    });
+
+    // Submit de nuevo tramo / punto
+    $('traverseForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const newId = $('travNextId').value.trim() || nextAutoPointId();
+
+      if (state.traverseMode === 'coords') {
+        const ex = parseFloat($('travDirectE').value);
+        const ny = parseFloat($('travDirectN').value);
+        const cz = parseFloat($('travDirectZ').value) || 0;
+        const desc = $('travDirectDesc').value.trim();
+        if (!Number.isFinite(ex) || !Number.isFinite(ny)) {
+          showToast('Ingresa Este (X) y Norte (Y) válidos.');
+          return;
+        }
+        addPoint({ id: newId, e: ex, n: ny, z: cz, desc }, true);
+        showToast(`Punto ${newId} agregado por coordenadas.`);
+        return;
+      }
+
+      // Si no hay punto inicial aún, creamos automáticamente el punto inicial primero
+      if (state.points.length === 0) {
+        const ie = parseFloat($('initE').value);
+        const ino = parseFloat($('initN').value);
+        if (!Number.isFinite(ie) || !Number.isFinite(ino)) {
+          showToast('Primero establece una coordenada inicial válida.');
+          return;
+        }
+        state.points.push({
+          id: $('initId').value.trim() || 'P1',
+          e: ie,
+          n: ino,
+          z: parseFloat($('initZ').value) || 0,
+          desc: $('initDesc').value.trim()
+        });
+      }
+
+      const baseIdx = $('travFromSelect').value !== '' ? parseInt($('travFromSelect').value, 10) : state.points.length - 1;
+      const fromPt = state.points[baseIdx] || state.points[state.points.length - 1];
+      const dist = parseFloat($('travDist').value);
+      const dz = parseFloat($('travDz').value) || 0;
+      const desc = $('travDesc').value.trim();
+
+      if (!Number.isFinite(dist) || dist <= 0) {
+        showToast('Ingresa una distancia horizontal mayor a 0.');
+        return;
+      }
+
+      let azDeg;
+      if (state.traverseMode === 'bearing') {
+        const quick = $('travQuickDir').value.trim();
+        if (quick) {
+          const parsed = C.parseDirectionString(quick);
+          if (!parsed) {
+            showToast('Formato de rumbo rápido inválido. Ej: N 45 30 15 E');
+            return;
+          }
+          azDeg = parsed.azimuth;
+          $('travQuickDir').value = '';
+        } else {
+          const ns = $('travNS').value;
+          const ew = $('travEW').value;
+          const deg = C.dmsToDeg($('travDeg').value, $('travMin').value, $('travSec').value);
+          if (deg < 0 || deg > 90) {
+            showToast('El ángulo de rumbo debe estar entre 0° y 90°.');
+            return;
+          }
+          azDeg = C.bearingToAzimuth(ns, ew, deg);
+        }
+      } else {
+        azDeg = C.normAzimuth(C.dmsToDeg($('travAzDeg').value, $('travAzMin').value, $('travAzSec').value));
+      }
+
+      const res = C.direct(fromPt, azDeg, dist, dz);
+      addPoint({ id: newId, e: res.e, n: res.n, z: res.z, desc }, true);
+      showToast(`${fromPt.id} → ${newId}: ${res.bearing} · ${dist.toFixed(2)} m`);
+    });
+
+    $('btnUndoPoint').addEventListener('click', () => {
+      if (state.points.length === 0) return;
+      const removed = state.points.pop();
+      refreshAll(false);
+      showToast(`Punto ${removed.id} eliminado`);
+    });
+
+    $('chkClosedPoly').addEventListener('change', (e) => {
+      state.closed = e.target.checked;
+      refreshAll(false);
+    });
+
+    // Ajuste Bowditch
+    $('btnBowditch').addEventListener('click', () => {
+      const box = $('bowditchResult');
+      if (state.points.length < 4) {
+        box.className = 'result-box error mt-xs';
+        box.innerHTML = 'Para ajustar por Bowditch necesitas una poligonal que vuelva al punto inicial (al menos 4 puntos: P1 → P2 → P3 → P1\').';
+        box.classList.remove('hidden');
+        return;
+      }
+      const adj = C.bowditchAdjust(state.points, state.points[0]);
+      if (!adj.ok) {
+        box.className = 'result-box error mt-xs';
+        box.textContent = adj.error;
+        box.classList.remove('hidden');
+        return;
+      }
+
+      state.closureInfo = adj;
+      box.className = 'result-box mt-xs';
+      box.innerHTML = `
+        <div class="result-kv"><span>Error ΔE / ΔN:</span><code>${adj.errE.toFixed(4)} / ${adj.errN.toFixed(4)} m</code></div>
+        <div class="result-kv"><span>Error Lineal:</span><code>${adj.errLinear.toFixed(4)} m</code></div>
+        <div class="result-kv"><span>Precisión:</span><code>${adj.precisionText}</code></div>
+        <button id="btnApplyBowditch" class="btn btn-primary btn-full mt-xs">Aplicar Compensación y Cerrar</button>
+      `;
+      box.classList.remove('hidden');
+
+      $('btnApplyBowditch').addEventListener('click', () => {
+        // Reemplaza por vértices compensados y quita el vértice final repetido que ya cerró exactamente sobre P1
+        state.points = adj.adjusted.slice(0, -1);
+        state.closed = true;
+        $('chkClosedPoly').checked = true;
+        refreshAll(true);
+        showToast(`Poligonal compensada por Bowditch (${adj.precisionText})`);
+      });
+    });
+
+    // ==================== TAB 2: FUNCIONES COGO ====================
+    $('cogoToolSelect').addEventListener('change', (e) => {
+      document.querySelectorAll('.cogo-panel').forEach(p => p.classList.add('hidden'));
+      $(`cogo-${e.target.value}`).classList.remove('hidden');
+    });
+
+    // 1. Inverso
+    const runInverse = (drawAux = false) => {
+      const a = getPointByIndex($('invPtA').value);
+      const b = getPointByIndex($('invPtB').value);
+      const box = $('resInverse');
+      if (!a || !b) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Selecciona dos puntos válidos.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const inv = C.inverse(a, b);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Rumbo (${a.id} → ${b.id}):</span><code>${inv.bearing}</code></div>
+        <div class="result-kv"><span>Azimut:</span><code>${inv.azimuthText}</code></div>
+        <div class="result-kv"><span>Distancia Horizontal:</span><code>${inv.dist.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Distancia Inclinada:</span><code>${inv.slopeDist.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>ΔE / ΔN / ΔZ:</span><code>${inv.dE.toFixed(3)} / ${inv.dN.toFixed(3)} / ${inv.dZ.toFixed(3)}</code></div>
+        <div class="result-kv"><span>Pendiente:</span><code>${inv.slopePct.toFixed(2)} % (${inv.vertAngleDeg.toFixed(2)}°)</code></div>
+      `;
+      box.classList.remove('hidden');
+      if (drawAux) {
+        state.auxLines.push({ from: a, to: b, color: '#f59e0b' });
+        refreshAll(false);
+        showToast(`Línea auxiliar ${a.id} → ${b.id} trazada`);
+      }
+    };
+    $('btnCalcInverse').addEventListener('click', () => runInverse(false));
+    $('btnDrawInverse').addEventListener('click', () => runInverse(true));
+
+    // 2. Directo / Radiación
+    $('btnCalcDirect').addEventListener('click', () => {
+      const base = getPointByIndex($('dirPtBase').value);
+      const parsed = C.parseDirectionString($('dirAngle').value);
+      const dist = parseFloat($('dirDist').value);
+      const dz = parseFloat($('dirDz').value) || 0;
+      const box = $('resDirect');
+      if (!base || !parsed || !Number.isFinite(dist) || dist <= 0) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica estación base, rumbo/azimut válido y distancia > 0.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.direct(base, parsed.azimuth, dist, dz);
+      const id = $('dirNewId').value.trim() || `R${state.points.length + 1}`;
+      state.auxLines.push({ from: base, to: res, color: '#38bdf8' });
+      addPoint({ id, e: res.e, n: res.n, z: res.z, desc: $('dirDesc').value.trim() }, true);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Punto creado:</span><code>${id}</code></div>
+        <div class="result-kv"><span>Este (X):</span><code>${res.e.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Norte (Y):</span><code>${res.n.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Rumbo / Azimut:</span><code>${res.bearing}</code></div>
+      `;
+      box.classList.remove('hidden');
+    });
+
+    // 3. Intersección Rumbo - Rumbo
+    $('btnCalcBB').addEventListener('click', () => {
+      const p1 = getPointByIndex($('bbPt1').value);
+      const p2 = getPointByIndex($('bbPt2').value);
+      const d1 = C.parseDirectionString($('bbDir1').value);
+      const d2 = C.parseDirectionString($('bbDir2').value);
+      const box = $('resBB');
+      if (!p1 || !p2 || !d1 || !d2) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica los dos puntos y sus rumbos/azimuts.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.intersectBearingBearing(p1, d1.azimuth, p2, d2.azimuth);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Este (X):</span><code>${res.point.e.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Norte (Y):</span><code>${res.point.n.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Dist. desde ${p1.id}:</span><code>${res.distFrom1.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Dist. desde ${p2.id}:</span><code>${res.distFrom2.toFixed(3)} m</code></div>
+        ${res.warning ? `<div style="color:var(--amber);margin-top:4px;">⚠ ${res.warning}</div>` : ''}
+        <button id="btnAddBBPt" class="btn btn-primary btn-full mt-xs">+ Agregar Intersección al Dibujo</button>
+      `;
+      box.classList.remove('hidden');
+      $('btnAddBBPt').addEventListener('click', () => {
+        state.auxLines.push({ from: p1, to: res.point, color: '#f59e0b' });
+        state.auxLines.push({ from: p2, to: res.point, color: '#f59e0b' });
+        addPoint({ id: `INT_${state.points.length + 1}`, ...res.point, desc: 'INT R-R' }, true);
+        showToast('Punto de intersección Rumbo–Rumbo agregado');
+      });
+    });
+
+    // 4. Intersección Distancia - Distancia
+    $('btnCalcDD').addEventListener('click', () => {
+      const p1 = getPointByIndex($('ddPt1').value);
+      const p2 = getPointByIndex($('ddPt2').value);
+      const r1 = parseFloat($('ddR1').value);
+      const r2 = parseFloat($('ddR2').value);
+      const box = $('resDD');
+      if (!p1 || !p2 || !Number.isFinite(r1) || !Number.isFinite(r2)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica puntos base y radios válidos.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.intersectDistDist(p1, r1, p2, r2);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      box.className = 'result-box mt-sm';
+      box.innerHTML = res.solutions.map((sol, idx) => `
+        <div style="margin-bottom:8px;">
+          <strong>${sol.label}</strong>
+          <div class="result-kv"><span>E / N:</span><code>${sol.e.toFixed(3)}, ${sol.n.toFixed(3)}</code></div>
+          <button class="btn btn-secondary btn-full mt-xs" data-dd-sol="${idx}">+ Agregar Solución ${idx + 1}</button>
+        </div>
+      `).join('');
+      box.classList.remove('hidden');
+      box.querySelectorAll('[data-dd-sol]').forEach(b => {
+        b.addEventListener('click', () => {
+          const sol = res.solutions[Number(b.dataset.ddSol)];
+          state.auxLines.push({ from: p1, to: sol, color: '#f59e0b' });
+          state.auxLines.push({ from: p2, to: sol, color: '#f59e0b' });
+          addPoint({ id: `TRIL_${state.points.length + 1}`, ...sol, desc: 'TRILATERACION' }, true);
+          showToast('Solución de trilateración agregada');
+        });
+      });
+    });
+
+    // 5. Intersección Rumbo - Distancia
+    $('btnCalcBD').addEventListener('click', () => {
+      const p1 = getPointByIndex($('bdPt1').value);
+      const p2 = getPointByIndex($('bdPt2').value);
+      const d1 = C.parseDirectionString($('bdDir1').value);
+      const r2 = parseFloat($('bdR2').value);
+      const box = $('resBD');
+      if (!p1 || !p2 || !d1 || !Number.isFinite(r2)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica puntos, dirección y distancia.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.intersectBearingDist(p1, d1.azimuth, p2, r2);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      box.className = 'result-box mt-sm';
+      box.innerHTML = res.solutions.map((sol, idx) => `
+        <div style="margin-bottom:8px;">
+          <strong>${sol.label}</strong>
+          <div class="result-kv"><span>E / N:</span><code>${sol.e.toFixed(3)}, ${sol.n.toFixed(3)}</code></div>
+          <button class="btn btn-secondary btn-full mt-xs" data-bd-sol="${idx}">+ Agregar Solución ${idx + 1}</button>
+        </div>
+      `).join('');
+      box.classList.remove('hidden');
+      box.querySelectorAll('[data-bd-sol]').forEach(b => {
+        b.addEventListener('click', () => {
+          const sol = res.solutions[Number(b.dataset.bdSol)];
+          state.auxLines.push({ from: p1, to: sol, color: '#f59e0b' });
+          state.auxLines.push({ from: p2, to: sol, color: '#f59e0b' });
+          addPoint({ id: `IBD_${state.points.length + 1}`, ...sol, desc: 'INT R-D' }, true);
+          showToast('Intersección Rumbo–Distancia agregada');
+        });
+      });
+    });
+
+    // 6. Estación y Offset
+    $('btnCalcOffsetPt').addEventListener('click', () => {
+      const a = getPointByIndex($('offPtA').value);
+      const b = getPointByIndex($('offPtB').value);
+      const st = parseFloat($('offStation').value);
+      const off = parseFloat($('offDist').value) || 0;
+      const box = $('resOffset');
+      if (!a || !b || !Number.isFinite(st)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica línea base y estación.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.stationOffsetPoint(a, b, st, off);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      state.auxLines.push({ from: a, to: b, color: '#38bdf8' });
+      addPoint({ id: `OFF_${state.points.length + 1}`, ...res.point, desc: `ST ${st.toFixed(1)} OFF ${off.toFixed(1)}` }, true);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Este (X):</span><code>${res.point.e.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Norte (Y):</span><code>${res.point.n.toFixed(3)} m</code></div>
+      `;
+      box.classList.remove('hidden');
+    });
+
+    $('btnProjPoint').addEventListener('click', () => {
+      const a = getPointByIndex($('offPtA').value);
+      const b = getPointByIndex($('offPtB').value);
+      const p = getPointByIndex($('offPtP').value);
+      const box = $('resOffset');
+      if (!a || !b || !p) return;
+      const res = C.projectPointToLine(a, b, p);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      state.auxLines.push({ from: p, to: res.foot, color: '#f59e0b' });
+      refreshAll(false);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Estación (Abscisa):</span><code>${res.station.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Offset:</span><code>${res.offset.toFixed(3)} m (${res.offset >= 0 ? 'Derecha' : 'Izquierda'})</code></div>
+        <div class="result-kv"><span>Pie Perpendicular:</span><code>E ${res.foot.e.toFixed(3)}, N ${res.foot.n.toFixed(3)}</code></div>
+      `;
+      box.classList.remove('hidden');
+    });
+
+    // 7. Subdividir Línea
+    $('btnSubdivide').addEventListener('click', () => {
+      const a = getPointByIndex($('subPtA').value);
+      const b = getPointByIndex($('subPtB').value);
+      const nSeg = parseInt($('subCount').value, 10) || 2;
+      const box = $('resSubdivide');
+      if (!a || !b || nSeg < 2) return;
+      const pts = C.subdivideLine(a, b, nSeg);
+      pts.forEach((pt, idx) => {
+        state.points.push({ id: `SUB_${idx + 1}`, ...pt, desc: `DIV ${a.id}-${b.id}` });
+      });
+      refreshAll(true);
+      box.className = 'result-box mt-sm';
+      box.textContent = `Se agregaron ${pts.length} puntos intermedios equidistantes entre ${a.id} y ${b.id}.`;
+      box.classList.remove('hidden');
+    });
+
+    // 8. Curva Horizontal Simple
+    $('btnCalcCurve').addEventListener('click', () => {
+      const pi = getPointByIndex($('curvPtPI').value);
+      const azIn = C.parseDirectionString($('curvAzIn').value);
+      const azOut = C.parseDirectionString($('curvAzOut').value);
+      const radius = parseFloat($('curvRadius').value);
+      const step = parseFloat($('curvStep').value) || 5;
+      const box = $('resCurve');
+      if (!pi || !azIn || !azOut || !Number.isFinite(radius)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Verifica el punto PI, rumbos de entrada/salida y radio.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const res = C.simpleHorizontalCurve(pi, azIn.azimuth, azOut.azimuth, radius, step);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+      state.curves.push(res);
+      refreshAll(true);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Deflexión Δ:</span><code>${C.formatDms(res.absDelta)} ${res.direction}</code></div>
+        <div class="result-kv"><span>Tangente (T):</span><code>${res.T.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Long. Curva (Lc):</span><code>${res.Lc.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Cuerda Larga (C):</span><code>${res.C.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>Externa (E) / Med (M):</span><code>${res.E.toFixed(3)} / ${res.M.toFixed(3)} m</code></div>
+        <div class="result-kv"><span>PC:</span><code>E ${res.pc.e.toFixed(2)}, N ${res.pc.n.toFixed(2)}</code></div>
+        <div class="result-kv"><span>PT:</span><code>E ${res.pt.e.toFixed(2)}, N ${res.pt.n.toFixed(2)}</code></div>
+        <button id="btnAddCurvePts" class="btn btn-secondary btn-full mt-xs">+ Añadir PC, PT y replanteo a puntos</button>
+      `;
+      box.classList.remove('hidden');
+      $('btnAddCurvePts').addEventListener('click', () => {
+        res.arcPoints.forEach((ap) => {
+          state.points.push({ id: ap.label, e: ap.e, n: ap.n, z: ap.z, desc: `CURVA R=${radius}` });
+        });
+        refreshAll(true);
+        showToast(`Se agregaron ${res.arcPoints.length} puntos de replanteo de curva`);
+      });
+    });
+
+    $('btnClearCurves').addEventListener('click', () => {
+      state.curves = [];
+      refreshAll(false);
+      showToast('Curvas limpiadas');
+    });
+
+    $('btnClearAux').addEventListener('click', () => {
+      state.auxLines = [];
+      refreshAll(false);
+      showToast('Líneas auxiliares COGO limpiadas');
+    });
+
+    // ==================== TAB 3: CUADRO DE CAMPO Y PUNTOS ====================
+    $('tableSubToggle').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      $('tableSubToggle').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const isField = btn.dataset.sub === 'field';
+      $('subFieldTable').classList.toggle('hidden', !isField);
+      $('subPointsTable').classList.toggle('hidden', isField);
+    });
+
+    $('pointsTableBody').addEventListener('click', (e) => {
+      const zoomBtn = e.target.closest('[data-zoom]');
+      if (zoomBtn) {
+        const pt = state.points[Number(zoomBtn.dataset.zoom)];
+        if (pt) mapEngine.focusPoint(pt);
+        return;
+      }
+      const delBtn = e.target.closest('[data-del]');
+      if (delBtn) {
+        const idx = Number(delBtn.dataset.del);
+        state.points.splice(idx, 1);
+        refreshAll(false);
+      }
+    });
+
+    $('btnCopyTable').addEventListener('click', async () => {
+      if (state.points.length === 0) return showToast('No hay datos para copiar');
+      const tsv = IO.fieldTableToTSV(state.points, state.closed && state.points.length >= 3);
+      try {
+        await navigator.clipboard.writeText(tsv);
+        showToast('Cuadro de datos copiado (listo para pegar en Excel)');
+      } catch {
+        IO.downloadFile(`${state.projectName}_cuadro.tsv`, tsv, 'text/tab-separated-values');
+        showToast('Cuadro descargado en formato TSV');
+      }
+    });
+
+    $('btnExportCsv').addEventListener('click', () => {
+      if (state.points.length === 0) return showToast('No hay puntos para exportar');
+      const csv = IO.pointsToCSV(state.points, 'PNEZD');
+      IO.downloadFile(`${state.projectName}_puntos.csv`, csv, 'text/csv;charset=utf-8');
+      showToast('Archivo CSV descargado');
+    });
+
+    // ==================== MODAL IMPORTAR CSV / TXT ====================
+    const importDialog = $('importDialog');
+    const dropZone = $('dropZone');
+    const fileInput = $('fileInput');
+    const importTextarea = $('importTextarea');
+
+    const updateImportPreview = () => {
+      const text = importTextarea.value.trim();
+      const preview = $('importPreview');
+      if (!text) {
+        preview.innerHTML = '';
+        return;
+      }
+      const res = IO.parsePointsText(text, {
+        format: $('importFormat').value,
+        delimiter: $('importDelim').value
+      });
+      const sample = res.points.slice(0, 4).map(p => `${p.id}: E=${p.e.toFixed(2)}, N=${p.n.toFixed(2)}, Z=${p.z.toFixed(2)}`).join(' · ');
+      preview.innerHTML = `
+        <div class="result-box ${res.points.length === 0 ? 'error' : ''}">
+          <div><strong>${res.points.length} puntos válidos detectados</strong> ${res.skippedHeader ? '(encabezado omitido)' : ''}</div>
+          ${sample ? `<div style="margin-top:4px;font-family:var(--font-mono);font-size:11px;">${sample}${res.points.length > 4 ? ' ...' : ''}</div>` : ''}
+          ${res.errors.length > 0 ? `<div style="color:var(--amber);margin-top:4px;">⚠ ${res.errors.length} línea(s) omitida(s): ${res.errors[0]}</div>` : ''}
+        </div>
+      `;
+    };
+
+    $('btnOpenImport').addEventListener('click', () => {
+      importDialog.showModal();
+      updateImportPreview();
+    });
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) readImportFile(file);
+    });
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) readImportFile(file);
+      fileInput.value = '';
+    });
+
+    function readImportFile(file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        importTextarea.value = reader.result || '';
+        updateImportPreview();
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    ['input', 'change'].forEach(ev => {
+      importTextarea.addEventListener(ev, updateImportPreview);
+      $('importFormat').addEventListener(ev, updateImportPreview);
+      $('importDelim').addEventListener(ev, updateImportPreview);
+    });
+
+    $('btnConfirmImport').addEventListener('click', () => {
+      const text = importTextarea.value.trim();
+      if (!text) return showToast('Carga un archivo o pega coordenadas primero.');
+      const res = IO.parsePointsText(text, {
+        format: $('importFormat').value,
+        delimiter: $('importDelim').value
+      });
+      if (res.points.length === 0) {
+        return showToast('No se encontraron puntos válidos. Revisa el formato de columnas.');
+      }
+
+      if ($('importAction').value === 'replace') {
+        state.points = res.points;
+        state.curves = [];
+        state.auxLines = [];
+      } else {
+        state.points.push(...res.points);
+      }
+
+      state.closed = $('importAutoClose').checked;
+      $('chkClosedPoly').checked = state.closed;
+
+      // Auto-cambio a Local si los puntos no son UTM plausibles
+      if (state.crsMode === 'utm' && !Geo.isPlausibleUtm(state.points[0].e, state.points[0].n)) {
+        state.crsMode = 'local';
+        state.crsLabel = 'COORDENADAS LOCALES (PLANO CAD)';
+        $('crsSelect').value = 'local';
+        $('hudCrsBadge').textContent = 'SISTEMA LOCAL · CAD';
+        mapEngine.setCRS('local');
+      }
+
+      importDialog.close();
+      refreshAll(true);
+      showToast(`${res.points.length} puntos importados correctamente`);
+    });
+
+    // ==================== MODAL EXPORTAR DXF ====================
+    const dxfDialog = $('dxfDialog');
+    $('btnOpenDxf').addEventListener('click', () => {
+      if (state.points.length === 0) {
+        return showToast('Agrega o importa puntos antes de exportar a DXF.');
+      }
+      const cleanName = (state.projectName || 'levantamiento').replace(/[^a-zA-Z0-9_-]/g, '_');
+      $('dxfFilename').value = `${cleanName}.dxf`;
+      const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
+      $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${metrics.legs.length} lados · Área: ${metrics.areaM2.toFixed(2)} m²`;
+      dxfDialog.showModal();
+    });
+
+    $('dxfTextScale').addEventListener('input', (e) => {
+      $('dxfScaleVal').textContent = `${Number(e.target.value).toFixed(1)}x`;
+    });
+
+    $('btnDownloadDxf').addEventListener('click', () => {
+      try {
+        const dxfContent = DXF.generateDXF(state, {
+          includePolygon: $('dxfOptPoly').checked,
+          includePoints: $('dxfOptPts').checked,
+          includeBearings: $('dxfOptBearings').checked,
+          includeAreaLabel: $('dxfOptArea').checked,
+          includeTable: $('dxfOptTable').checked,
+          includeNorthArrow: $('dxfOptNorth').checked,
+          includeGrid: $('dxfOptGrid').checked,
+          textScale: parseFloat($('dxfTextScale').value) || 1.0
+        });
+        let filename = $('dxfFilename').value.trim() || 'levantamiento.dxf';
+        if (!filename.toLowerCase().endsWith('.dxf')) filename += '.dxf';
+        IO.downloadFile(filename, dxfContent, 'application/dxf');
+        dxfDialog.close();
+        showToast(`DXF "${filename}" descargado con cuadro de datos de campo`);
+      } catch (err) {
+        showToast(`Error al generar DXF: ${err.message}`);
+      }
+    });
+
+    // Cerrar modales
+    document.querySelectorAll('[data-close]').forEach(btn => {
+      btn.addEventListener('click', () => $(btn.dataset.close).close());
+    });
+  }
+
+  // ==================== ARRANQUE ====================
+  function init() {
+    mapEngine = new global.TopoMapEngine('leafletMap', 'cadCanvas', {
+      onCursorMove: ({ e, n, lat, lon }) => {
+        $('hudE').textContent = Number.isFinite(e) ? e.toFixed(3) : '-';
+        $('hudN').textContent = Number.isFinite(n) ? n.toFixed(3) : '-';
+        if (lat !== null && lon !== null) {
+          $('hudLatLon').textContent = `${lat.toFixed(6)}°, ${lon.toFixed(6)}°`;
+        }
+      },
+      onMapPick: (mode, coord) => {
+        if (mode === 'initial') {
+          $('initE').value = coord.e.toFixed(3);
+          $('initN').value = coord.n.toFixed(3);
+          if (state.points.length === 0) {
+            addPoint({ id: $('initId').value.trim() || 'P1', e: coord.e, n: coord.n, z: parseFloat($('initZ').value) || 0, desc: $('initDesc').value.trim() }, false);
+          } else {
+            state.points[0].e = coord.e;
+            state.points[0].n = coord.n;
+            refreshAll(false);
+          }
+          setMapPickMode(null);
+          showToast(`Coordenada inicial capturada: E ${coord.e.toFixed(3)}, N ${coord.n.toFixed(3)}`);
+        } else if (mode === 'addPoint') {
+          addPoint({ id: nextAutoPointId(), e: coord.e, n: coord.n, z: 0, desc: 'MAPA' }, false);
+          showToast(`Punto agregado en E ${coord.e.toFixed(2)}, N ${coord.n.toFixed(2)}`);
+        }
+      }
+    });
+
+    bindEvents();
+    loadPanamaDemo();
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})(window);
