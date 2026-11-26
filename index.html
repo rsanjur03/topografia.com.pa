@@ -28,7 +28,7 @@
           </div>
           <div class="brand-text">
             <span class="brand-domain">topografia.com.pa</span>
-            <span class="brand-sub">Calculadora Gráfica COGO</span>
+            <span class="brand-sub" data-i18n="brandSub">Calculadora Gráfica COGO</span>
           </div>
         </div>
 
@@ -37,36 +37,37 @@
         <input id="projectNameInput" class="project-input" type="text" value="Finca_Chiriqui_17N" title="Nombre del proyecto (usado en DXF)" aria-label="Nombre del proyecto" />
 
         <select id="crsSelect" class="crs-select" title="Sistema de Coordenadas">
-          <option value="utm17N" selected>UTM WGS84 · Zona 17N (Panamá)</option>
-          <option value="utm18N">UTM WGS84 · Zona 18N (Panamá Este / Darién)</option>
-          <option value="local">Sistema Local (Plano CAD)</option>
+          <option value="utm17N" data-i18n="crsUtm17" selected>UTM WGS84 · Zona 17N (Panamá)</option>
+          <option value="utm18N" data-i18n="crsUtm18">UTM WGS84 · Zona 18N (Panamá Este / Darién)</option>
+          <option value="local" data-i18n="crsLocal">Sistema Local (Plano CAD)</option>
         </select>
       </div>
 
       <div class="topbar-actions">
         <button id="btnLoadDemo" class="btn btn-ghost" title="Cargar poligonal de ejemplo en David, Chiriquí">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 18 21 6 21 2 8.5 12 2"/></svg>
-          <span>Ejemplo</span>
+          <span data-i18n="btnDemo">Ejemplo</span>
         </button>
         <button id="btnStartDrawPoly" class="btn btn-secondary" title="Dibujar un polígono directamente sobre la imagen satelital o mapa para obtener sus datos de campo">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
-          <span>Dibujar en Mapa</span>
+          <span data-i18n="btnDrawMap">Dibujar en Mapa</span>
         </button>
         <button id="btnToggleEditMode" class="btn btn-ghost" title="Activar modo edición para arrastrar y mover vértices sobre el mapa">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
-          <span>Editar Puntos</span>
+          <span data-i18n="btnEditPts">Editar Puntos</span>
         </button>
         <button id="btnOpenImport" class="btn btn-secondary" title="Importar archivo CSV o TXT">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          <span>Importar CSV/TXT</span>
+          <span data-i18n="btnImport">Importar CSV/TXT</span>
         </button>
         <button id="btnOpenDxf" class="btn btn-primary" title="Exportar dibujo y cuadro de datos a DXF">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          <span>Exportar DXF</span>
+          <span data-i18n="btnExportDxf">Exportar DXF</span>
         </button>
         <button id="btnClearAll" class="icon-btn danger-hover" title="Limpiar proyecto" aria-label="Limpiar proyecto">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
         </button>
+        <button id="btnLangToggle" class="icon-btn lang-btn" title="Switch interface to English" aria-label="Cambiar idioma">EN</button>
         <button id="btnThemeToggle" class="icon-btn" title="Cambiar tema Claro (Campo) / Oscuro (CAD)" aria-label="Cambiar tema">
           <svg id="iconSun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
         </button>
@@ -79,10 +80,10 @@
       <aside id="sidebar" class="sidebar">
         <!-- Pestañas principales -->
         <nav class="tabs" role="tablist">
-          <button class="tab-btn active" data-tab="traverse" role="tab" aria-selected="true">Poligonal</button>
-          <button class="tab-btn" data-tab="cogo" role="tab" aria-selected="false">COGO</button>
+          <button class="tab-btn active" data-tab="traverse" role="tab" aria-selected="true" data-i18n="tabTraverse">Poligonal</button>
+          <button class="tab-btn" data-tab="cogo" role="tab" aria-selected="false" data-i18n="tabCogo">COGO</button>
           <button class="tab-btn" data-tab="table" role="tab" aria-selected="false">
-            Cuadro <span id="badgePtCount" class="badge">0</span>
+            <span data-i18n="tabTable">Cuadro</span> <span id="badgePtCount" class="badge">0</span>
           </button>
         </nav>
 
@@ -91,59 +92,59 @@
           <!-- Tarjeta de Coordenada Inicial -->
           <div class="card">
             <div class="card-header">
-              <h3>1. Coordenada Inicial</h3>
-              <button id="btnPickInitial" class="chip-btn" title="Hacer clic en el mapa para capturar la coordenada inicial">
+              <h3 data-i18n="secInitTitle">1. Coordenada Inicial</h3>
+              <button id="btnPickInitial" class="chip-btn" data-i18n="btnPickMap" title="Hacer clic en el mapa para capturar la coordenada inicial">
                 📍 Elegir en mapa
               </button>
             </div>
             <div class="grid-3">
               <label class="field">
-                <span>Punto</span>
+                <span data-i18n="lblPoint">Punto</span>
                 <input id="initId" type="text" value="P1" />
               </label>
               <label class="field">
-                <span>Este (X)</span>
+                <span data-i18n="lblEast">Este (X)</span>
                 <input id="initE" type="number" step="0.001" value="342527.835" />
               </label>
               <label class="field">
-                <span>Norte (Y)</span>
+                <span data-i18n="lblNorth">Norte (Y)</span>
                 <input id="initN" type="number" step="0.001" value="932597.318" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Cota (Z)</span>
+                <span data-i18n="lblElev">Cota (Z)</span>
                 <input id="initZ" type="number" step="0.01" value="0.00" />
               </label>
               <label class="field">
-                <span>Descripción</span>
+                <span data-i18n="lblDesc">Descripción</span>
                 <input id="initDesc" type="text" value="MOJON 1" placeholder="Ej. MOJON, BM..." />
               </label>
             </div>
             <div class="row-actions mt-sm">
-              <button id="btnSetInitial" class="btn btn-secondary btn-full">Establecer Punto Inicial</button>
+              <button id="btnSetInitial" class="btn btn-secondary btn-full" data-i18n="btnSetInitial">Establecer Punto Inicial</button>
             </div>
           </div>
 
           <!-- Tarjeta de Tramo (Rumbo / Azimut / Coordenada) -->
           <div class="card">
             <div class="card-header">
-              <h3>2. Agregar Tramo</h3>
+              <h3 data-i18n="secLegTitle">2. Agregar Tramo</h3>
               <div class="segmented" id="traverseModeToggle">
-                <button type="button" class="seg-btn active" data-mode="bearing">Rumbo</button>
-                <button type="button" class="seg-btn" data-mode="azimuth">Azimut</button>
-                <button type="button" class="seg-btn" data-mode="coords">E, N</button>
+                <button type="button" class="seg-btn active" data-mode="bearing" data-i18n="modeBearing">Rumbo</button>
+                <button type="button" class="seg-btn" data-mode="azimuth" data-i18n="modeAzimuth">Azimut</button>
+                <button type="button" class="seg-btn" data-mode="coords" data-i18n="modeCoords">E, N</button>
               </div>
             </div>
 
             <form id="traverseForm" autocomplete="off">
               <div class="grid-2">
                 <label class="field">
-                  <span>Desde Estación</span>
+                  <span data-i18n="lblFromStation">Desde Estación</span>
                   <select id="travFromSelect"></select>
                 </label>
                 <label class="field">
-                  <span>Nuevo Punto (ID)</span>
+                  <span data-i18n="lblNewPointId">Nuevo Punto (ID)</span>
                   <input id="travNextId" type="text" value="P2" required />
                 </label>
               </div>
@@ -151,7 +152,7 @@
               <!-- Entrada rápida por texto (Rumbo o Azimut) -->
               <div id="travBearingBox" class="mt-sm">
                 <label class="field">
-                  <span>Rumbo (Cuadrante + Grados° Min' Seg")</span>
+                  <span data-i18n="lblBearingDms">Rumbo (Cuadrante + Grados° Min' Seg")</span>
                   <div class="dms-bearing-row">
                     <select id="travNS" aria-label="Norte o Sur">
                       <option value="N">N</option>
@@ -167,14 +168,14 @@
                   </div>
                 </label>
                 <label class="field mt-xs">
-                  <span>o entrada rápida de rumbo (opcional)</span>
+                  <span data-i18n="lblQuickBearing">o entrada rápida de rumbo (opcional)</span>
                   <input id="travQuickDir" type="text" placeholder='Ej: N 45 30 15 E  o  S 12°05&apos;30" W' />
                 </label>
               </div>
 
               <div id="travAzimuthBox" class="mt-sm hidden">
                 <label class="field">
-                  <span>Azimut (0° – 360°)</span>
+                  <span data-i18n="lblAzimuthDms">Azimut (0° – 360°)</span>
                   <div class="dms-az-row">
                     <input id="travAzDeg" type="number" min="0" max="360" step="1" placeholder="G°" value="45" />
                     <input id="travAzMin" type="number" min="0" max="59" step="1" placeholder="M'" value="30" />
@@ -185,15 +186,15 @@
 
               <div id="travDistBox" class="grid-3 mt-sm">
                 <label class="field">
-                  <span>Distancia (m)</span>
+                  <span data-i18n="lblDistM">Distancia (m)</span>
                   <input id="travDist" type="number" step="0.001" min="0" placeholder="50.000" value="45.000" />
                 </label>
                 <label class="field">
-                  <span>ΔZ (m)</span>
+                  <span data-i18n="lblDzM">ΔZ (m)</span>
                   <input id="travDz" type="number" step="0.01" value="0" />
                 </label>
                 <label class="field">
-                  <span>Descripción</span>
+                  <span data-i18n="lblDesc">Descripción</span>
                   <input id="travDesc" type="text" placeholder="LINDERO" />
                 </label>
               </div>
@@ -201,27 +202,27 @@
               <div id="travDirectCoordsBox" class="hidden mt-sm">
                 <div class="grid-3">
                   <label class="field">
-                    <span>Este (X)</span>
+                    <span data-i18n="lblEast">Este (X)</span>
                     <input id="travDirectE" type="number" step="0.001" />
                   </label>
                   <label class="field">
-                    <span>Norte (Y)</span>
+                    <span data-i18n="lblNorth">Norte (Y)</span>
                     <input id="travDirectN" type="number" step="0.001" />
                   </label>
                   <label class="field">
-                    <span>Cota (Z)</span>
+                    <span data-i18n="lblElev">Cota (Z)</span>
                     <input id="travDirectZ" type="number" step="0.01" value="0" />
                   </label>
                 </div>
                 <label class="field mt-xs">
-                  <span>Descripción</span>
+                  <span data-i18n="lblDesc">Descripción</span>
                   <input id="travDirectDesc" type="text" placeholder="VERTICE" />
                 </label>
               </div>
 
               <div class="row-actions mt-sm">
-                <button type="submit" class="btn btn-primary btn-full">+ Agregar Punto al Dibujo</button>
-                <button type="button" id="btnUndoPoint" class="btn btn-ghost" title="Deshacer último punto">Deshacer</button>
+                <button type="submit" class="btn btn-primary btn-full" data-i18n="btnAddPoint">+ Agregar Punto al Dibujo</button>
+                <button type="button" id="btnUndoPoint" class="btn btn-ghost" data-i18n="btnUndo" title="Deshacer último punto">Deshacer</button>
               </div>
             </form>
           </div>
@@ -229,34 +230,34 @@
           <!-- Cierre, Bowditch y Resumen -->
           <div class="card">
             <div class="card-header">
-              <h3>3. Poligonal y Superficie</h3>
+              <h3 data-i18n="secAreaTitle">3. Poligonal y Superficie</h3>
               <label class="switch-inline">
                 <input id="chkClosedPoly" type="checkbox" checked />
-                <span>Cerrar polígono</span>
+                <span data-i18n="lblClosePoly">Cerrar polígono</span>
               </label>
             </div>
 
             <div class="metrics-grid">
               <div class="metric-box">
-                <span class="metric-label">Área (m²)</span>
+                <span class="metric-label" data-i18n="statAreaM2">Área (m²)</span>
                 <strong id="statAreaM2" class="metric-val">0.00</strong>
               </div>
               <div class="metric-box">
-                <span class="metric-label">Hectáreas (ha)</span>
+                <span class="metric-label" data-i18n="statAreaHa">Hectáreas (ha)</span>
                 <strong id="statAreaHa" class="metric-val">0.0000</strong>
               </div>
               <div class="metric-box">
-                <span class="metric-label">Perímetro (m)</span>
+                <span class="metric-label" data-i18n="statPerim">Perímetro (m)</span>
                 <strong id="statPerim" class="metric-val">0.000</strong>
               </div>
               <div class="metric-box">
-                <span class="metric-label">Varas²</span>
-                <strong id="statVaras" class="metric-val">0.00</strong>
+                <span class="metric-label" data-i18n="statAcres">Acres (ac)</span>
+                <strong id="statAcres" class="metric-val">0.0000</strong>
               </div>
             </div>
 
             <div class="row-actions mt-sm">
-              <button id="btnBowditch" class="btn btn-secondary btn-full" title="Calcula el error lineal entre el último punto y el punto inicial y ajusta proporcionalmente (Regla de la Brújula)">
+              <button id="btnBowditch" class="btn btn-secondary btn-full" data-i18n="btnBowditch" title="Calcula el error lineal entre el último punto y el punto inicial y ajusta proporcionalmente (Regla de la Brújula)">
                 Ajuste Bowditch (Cierre)
               </button>
             </div>
@@ -268,192 +269,192 @@
         <section id="tab-cogo" class="tab-pane">
           <div class="card">
             <label class="field">
-              <span>Herramienta COGO</span>
+              <span data-i18n="lblCogoTool">Herramienta COGO</span>
               <select id="cogoToolSelect">
-                <option value="inverse">1. Inverso (Rumbo, Azimut, Distancia y Pendiente)</option>
-                <option value="direct">2. Directo / Radiación (Estación + Rumbo/Az + Dist)</option>
-                <option value="intBB">3. Intersección Rumbo – Rumbo</option>
-                <option value="intDD">4. Intersección Distancia – Distancia (Trilateración)</option>
-                <option value="intBD">5. Intersección Rumbo – Distancia</option>
-                <option value="offset">6. Estación y Offset (Línea Base A → B)</option>
-                <option value="subdivide">7. Subdividir Línea en N Tramos Iguales</option>
-                <option value="curve">8. Curva Horizontal Simple (Replanteo Vial)</option>
-                <option value="rotate">9. Girar Polígono / Puntos (desde Vértice)</option>
-                <option value="move">10. Mover / Trasladar Todos los Puntos</option>
-                <option value="lots">11. Dividir Polígono en Lotes Iguales (2, 3, N)</option>
+                <option value="inverse" data-i18n="optInverse">1. Inverso (Rumbo, Azimut, Distancia y Pendiente)</option>
+                <option value="direct" data-i18n="optDirect">2. Directo / Radiación (Estación + Rumbo/Az + Dist)</option>
+                <option value="intBB" data-i18n="optIntBB">3. Intersección Rumbo – Rumbo</option>
+                <option value="intDD" data-i18n="optIntDD">4. Intersección Distancia – Distancia (Trilateración)</option>
+                <option value="intBD" data-i18n="optIntBD">5. Intersección Rumbo – Distancia</option>
+                <option value="offset" data-i18n="optOffset">6. Estación y Offset (Línea Base A → B)</option>
+                <option value="subdivide" data-i18n="optSubdivide">7. Subdividir Línea en N Tramos Iguales</option>
+                <option value="curve" data-i18n="optCurve">8. Curva Horizontal Simple (Replanteo Vial)</option>
+                <option value="rotate" data-i18n="optRotate">9. Girar Polígono / Puntos (desde Vértice)</option>
+                <option value="move" data-i18n="optMove">10. Mover / Trasladar Todos los Puntos</option>
+                <option value="lots" data-i18n="optLots">11. Dividir Polígono en Lotes Iguales (2, 3, N)</option>
               </select>
             </label>
           </div>
 
           <!-- 1. INVERSO -->
           <div id="cogo-inverse" class="card cogo-panel">
-            <h3>Inverso entre Dos Puntos</h3>
+            <h3 data-i18n="hInverse">Inverso entre Dos Puntos</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Desde Punto A</span>
+                <span data-i18n="lblFromA">Desde Punto A</span>
                 <select id="invPtA" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Hasta Punto B</span>
+                <span data-i18n="lblToB">Hasta Punto B</span>
                 <select id="invPtB" class="pt-select"></select>
               </label>
             </div>
             <div class="row-actions mt-sm">
-              <button id="btnCalcInverse" class="btn btn-primary btn-full">Calcular Inverso</button>
-              <button id="btnDrawInverse" class="btn btn-secondary">Trazar Aux.</button>
+              <button id="btnCalcInverse" class="btn btn-primary btn-full" data-i18n="btnCalcInverse">Calcular Inverso</button>
+              <button id="btnDrawInverse" class="btn btn-secondary" data-i18n="btnDrawAux">Trazar Aux.</button>
             </div>
             <div id="resInverse" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 2. DIRECTO / RADIACION -->
           <div id="cogo-direct" class="card cogo-panel hidden">
-            <h3>Cálculo Directo / Radiación</h3>
+            <h3 data-i18n="hDirect">Cálculo Directo / Radiación</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Estación Base</span>
+                <span data-i18n="lblBaseStation">Estación Base</span>
                 <select id="dirPtBase" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>ID Nuevo Punto</span>
+                <span data-i18n="lblNewPtId">ID Nuevo Punto</span>
                 <input id="dirNewId" type="text" placeholder="R1" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Rumbo o Azimut</span>
+                <span data-i18n="lblBearingOrAz">Rumbo o Azimut</span>
                 <input id="dirAngle" type="text" placeholder="N 35 20 10 E o 35.336" value="N 35 20 10 E" />
               </label>
               <label class="field">
-                <span>Distancia H (m)</span>
+                <span data-i18n="lblHorizDist">Distancia H (m)</span>
                 <input id="dirDist" type="number" step="0.001" value="25.000" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>ΔZ (m)</span>
+                <span data-i18n="lblDzM">ΔZ (m)</span>
                 <input id="dirDz" type="number" step="0.01" value="0" />
               </label>
               <label class="field">
-                <span>Descripción</span>
+                <span data-i18n="lblDesc">Descripción</span>
                 <input id="dirDesc" type="text" value="RADIACION" />
               </label>
             </div>
-            <button id="btnCalcDirect" class="btn btn-primary btn-full mt-sm">Calcular y Agregar Punto</button>
+            <button id="btnCalcDirect" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcDirect">Calcular y Agregar Punto</button>
             <div id="resDirect" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 3. INTERSECCION RUMBO-RUMBO -->
           <div id="cogo-intBB" class="card cogo-panel hidden">
-            <h3>Intersección Rumbo – Rumbo</h3>
+            <h3 data-i18n="hIntBB">Intersección Rumbo – Rumbo</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Punto 1</span>
+                <span data-i18n="lblPt1">Punto 1</span>
                 <select id="bbPt1" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Rumbo / Azimut 1</span>
+                <span data-i18n="lblDir1">Rumbo / Azimut 1</span>
                 <input id="bbDir1" type="text" placeholder="N 45 00 00 E" value="N 45 00 00 E" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Punto 2</span>
+                <span data-i18n="lblPt2">Punto 2</span>
                 <select id="bbPt2" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Rumbo / Azimut 2</span>
+                <span data-i18n="lblDir2">Rumbo / Azimut 2</span>
                 <input id="bbDir2" type="text" placeholder="N 30 00 00 W" value="N 30 00 00 W" />
               </label>
             </div>
-            <button id="btnCalcBB" class="btn btn-primary btn-full mt-sm">Calcular Intersección</button>
+            <button id="btnCalcBB" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcIntersection">Calcular Intersección</button>
             <div id="resBB" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 4. INTERSECCION DIST-DIST -->
           <div id="cogo-intDD" class="card cogo-panel hidden">
-            <h3>Intersección Distancia – Distancia</h3>
+            <h3 data-i18n="hIntDD">Intersección Distancia – Distancia</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Centro 1 (P1)</span>
+                <span data-i18n="lblCenter1">Centro 1 (P1)</span>
                 <select id="ddPt1" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Distancia / Radio 1 (m)</span>
+                <span data-i18n="lblRadius1">Distancia / Radio 1 (m)</span>
                 <input id="ddR1" type="number" step="0.001" value="40" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Centro 2 (P2)</span>
+                <span data-i18n="lblCenter2">Centro 2 (P2)</span>
                 <select id="ddPt2" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Distancia / Radio 2 (m)</span>
+                <span data-i18n="lblRadius2">Distancia / Radio 2 (m)</span>
                 <input id="ddR2" type="number" step="0.001" value="40" />
               </label>
             </div>
-            <button id="btnCalcDD" class="btn btn-primary btn-full mt-sm">Calcular Trilateración</button>
+            <button id="btnCalcDD" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcTrilat">Calcular Trilateración</button>
             <div id="resDD" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 5. INTERSECCION RUMBO-DIST -->
           <div id="cogo-intBD" class="card cogo-panel hidden">
-            <h3>Intersección Rumbo – Distancia</h3>
+            <h3 data-i18n="hIntBD">Intersección Rumbo – Distancia</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Punto Dirección (P1)</span>
+                <span data-i18n="lblPtDir1">Punto Dirección (P1)</span>
                 <select id="bdPt1" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Rumbo / Azimut 1</span>
+                <span data-i18n="lblDir1">Rumbo / Azimut 1</span>
                 <input id="bdDir1" type="text" placeholder="N 60 00 00 E" value="N 60 00 00 E" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Punto Centro (P2)</span>
+                <span data-i18n="lblPtCenter2">Punto Centro (P2)</span>
                 <select id="bdPt2" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Distancia / Radio (m)</span>
+                <span data-i18n="lblRadius">Distancia / Radio (m)</span>
                 <input id="bdR2" type="number" step="0.001" value="35" />
               </label>
             </div>
-            <button id="btnCalcBD" class="btn btn-primary btn-full mt-sm">Calcular Intersección</button>
+            <button id="btnCalcBD" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcIntersection">Calcular Intersección</button>
             <div id="resBD" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 6. ESTACION Y OFFSET -->
           <div id="cogo-offset" class="card cogo-panel hidden">
-            <h3>Estación y Offset sobre Línea A → B</h3>
+            <h3 data-i18n="hOffset">Estación y Offset sobre Línea A → B</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Inicio Línea (A)</span>
+                <span data-i18n="lblLineStart">Inicio Línea (A)</span>
                 <select id="offPtA" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Fin Línea (B)</span>
+                <span data-i18n="lblLineEnd">Fin Línea (B)</span>
                 <select id="offPtB" class="pt-select"></select>
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Estación / Abscisa (m)</span>
+                <span data-i18n="lblStation">Estación / Abscisa (m)</span>
                 <input id="offStation" type="number" step="0.001" value="20.000" />
               </label>
               <label class="field">
-                <span>Offset (m) [-Izq / +Der]</span>
+                <span data-i18n="lblOffset">Offset (m) [-Izq / +Der]</span>
                 <input id="offDist" type="number" step="0.001" value="5.000" />
               </label>
             </div>
-            <button id="btnCalcOffsetPt" class="btn btn-primary btn-full mt-sm">Crear Punto por Estación/Offset</button>
+            <button id="btnCalcOffsetPt" class="btn btn-primary btn-full mt-sm" data-i18n="btnCreateOffsetPt">Crear Punto por Estación/Offset</button>
 
             <hr class="sep" />
             <label class="field">
-              <span>O proyectar punto existente P sobre A → B:</span>
+              <span data-i18n="lblProjExisting">O proyectar punto existente P sobre A → B:</span>
               <div class="row-actions">
                 <select id="offPtP" class="pt-select"></select>
-                <button id="btnProjPoint" class="btn btn-secondary">Proyectar</button>
+                <button id="btnProjPoint" class="btn btn-secondary" data-i18n="btnProject">Proyectar</button>
               </div>
             </label>
             <div id="resOffset" class="result-box hidden mt-sm"></div>
@@ -461,80 +462,80 @@
 
           <!-- 7. SUBDIVIDIR LINEA -->
           <div id="cogo-subdivide" class="card cogo-panel hidden">
-            <h3>Subdividir Línea en Tramos Iguales</h3>
+            <h3 data-i18n="hSubdivide">Subdividir Línea en Tramos Iguales</h3>
             <div class="grid-3 mt-xs">
               <label class="field">
-                <span>Punto A</span>
+                <span data-i18n="lblPtA">Punto A</span>
                 <select id="subPtA" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Punto B</span>
+                <span data-i18n="lblPtB">Punto B</span>
                 <select id="subPtB" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>N° Tramos</span>
+                <span data-i18n="lblNumSegs">N° Tramos</span>
                 <input id="subCount" type="number" min="2" max="50" value="4" />
               </label>
             </div>
-            <button id="btnSubdivide" class="btn btn-primary btn-full mt-sm">Generar Puntos Intermedios</button>
+            <button id="btnSubdivide" class="btn btn-primary btn-full mt-sm" data-i18n="btnSubdivide">Generar Puntos Intermedios</button>
             <div id="resSubdivide" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 8. CURVA HORIZONTAL SIMPLE -->
           <div id="cogo-curve" class="card cogo-panel hidden">
-            <h3>Curva Horizontal Simple (Replanteo Vial)</h3>
+            <h3 data-i18n="hCurve">Curva Horizontal Simple (Replanteo Vial)</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Punto PI (Vértice)</span>
+                <span data-i18n="lblPtPI">Punto PI (Vértice)</span>
                 <select id="curvPtPI" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Radio R (m)</span>
+                <span data-i18n="lblRadiusR">Radio R (m)</span>
                 <input id="curvRadius" type="number" step="0.1" min="1" value="35" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Rumbo/Az. Entrada (hacia PI)</span>
+                <span data-i18n="lblAzIn">Rumbo/Az. Entrada (hacia PI)</span>
                 <input id="curvAzIn" type="text" value="N 20 00 00 E" />
               </label>
               <label class="field">
-                <span>Rumbo/Az. Salida (desde PI)</span>
+                <span data-i18n="lblAzOut">Rumbo/Az. Salida (desde PI)</span>
                 <input id="curvAzOut" type="text" value="S 85 00 00 E" />
               </label>
             </div>
             <label class="field mt-xs">
-              <span>Intervalo de replanteo en arco (m)</span>
+              <span data-i18n="lblArcStep">Intervalo de replanteo en arco (m)</span>
               <input id="curvStep" type="number" step="1" min="1" value="5" />
             </label>
             <div class="row-actions mt-sm">
-              <button id="btnCalcCurve" class="btn btn-primary btn-full">Calcular y Dibujar Curva</button>
-              <button id="btnClearCurves" class="btn btn-ghost">Limpiar</button>
+              <button id="btnCalcCurve" class="btn btn-primary btn-full" data-i18n="btnCalcCurve">Calcular y Dibujar Curva</button>
+              <button id="btnClearCurves" class="btn btn-ghost" data-i18n="btnClear">Limpiar</button>
             </div>
             <div id="resCurve" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 9. GIRAR POLIGONO / PUNTOS -->
           <div id="cogo-rotate" class="card cogo-panel hidden">
-            <h3>Girar Polígono / Todos los Puntos</h3>
+            <h3 data-i18n="hRotate">Girar Polígono / Todos los Puntos</h3>
             <label class="field mt-xs">
-              <span>Punto Pivote (Centro de Giro)</span>
+              <span data-i18n="lblPivotPt">Punto Pivote (Centro de Giro)</span>
               <select id="rotPivotSelect" class="pt-select"></select>
             </label>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>Ángulo de giro (grados)</span>
+                <span data-i18n="lblRotAngle">Ángulo de giro (grados)</span>
                 <input id="rotAngleDeg" type="number" step="0.01" value="15" />
               </label>
               <label class="field">
-                <span>Sentido</span>
+                <span data-i18n="lblRotDir">Sentido</span>
                 <select id="rotDir">
-                  <option value="1" selected>Horario / Derecha (+)</option>
-                  <option value="-1">Antihorario / Izquierda (−)</option>
+                  <option value="1" data-i18n="optCW" selected>Horario / Derecha (+)</option>
+                  <option value="-1" data-i18n="optCCW">Antihorario / Izquierda (−)</option>
                 </select>
               </label>
             </div>
-            <button id="btnApplyRotate" class="btn btn-primary btn-full mt-sm">Aplicar Giro</button>
+            <button id="btnApplyRotate" class="btn btn-primary btn-full mt-sm" data-i18n="btnApplyRotate">Aplicar Giro</button>
             <div class="quick-pills mt-xs">
               <button type="button" class="chip-btn" data-rot="-90">−90°</button>
               <button type="button" class="chip-btn" data-rot="-15">−15°</button>
@@ -548,88 +549,88 @@
 
           <!-- 10. MOVER / TRASLADAR TODOS LOS PUNTOS -->
           <div id="cogo-move" class="card cogo-panel hidden">
-            <h3>Mover / Trasladar Todos los Puntos</h3>
+            <h3 data-i18n="hMove">Mover / Trasladar Todos los Puntos</h3>
             <div class="grid-3 mt-xs">
               <label class="field">
-                <span>ΔEste (m)</span>
+                <span data-i18n="lblMoveDe">ΔEste (m)</span>
                 <input id="moveDe" type="number" step="0.001" value="10.000" />
               </label>
               <label class="field">
-                <span>ΔNorte (m)</span>
+                <span data-i18n="lblMoveDn">ΔNorte (m)</span>
                 <input id="moveDn" type="number" step="0.001" value="0.000" />
               </label>
               <label class="field">
-                <span>ΔCota (m)</span>
+                <span data-i18n="lblMoveDz">ΔCota (m)</span>
                 <input id="moveDz" type="number" step="0.01" value="0" />
               </label>
             </div>
-            <button id="btnMoveDelta" class="btn btn-primary btn-full mt-sm">Mover por Desplazamiento (ΔE, ΔN)</button>
+            <button id="btnMoveDelta" class="btn btn-primary btn-full mt-sm" data-i18n="btnMoveDelta">Mover por Desplazamiento (ΔE, ΔN)</button>
 
             <hr class="sep" />
             <div class="card-header" style="margin-bottom:4px;">
-              <h3>O mover desde vértice a destino</h3>
-              <button id="btnPickMoveDest" type="button" class="chip-btn">📍 Elegir en mapa</button>
+              <h3 data-i18n="hMoveBase">O mover desde vértice a destino</h3>
+              <button id="btnPickMoveDest" type="button" class="chip-btn" data-i18n="btnPickMap">📍 Elegir en mapa</button>
             </div>
             <div class="grid-3 mt-xs">
               <label class="field">
-                <span>Vértice base</span>
+                <span data-i18n="lblBaseVertex">Vértice base</span>
                 <select id="moveBasePt" class="pt-select"></select>
               </label>
               <label class="field">
-                <span>Destino E</span>
+                <span data-i18n="lblDestE">Destino E</span>
                 <input id="moveDestE" type="number" step="0.001" placeholder="Este" />
               </label>
               <label class="field">
-                <span>Destino N</span>
+                <span data-i18n="lblDestN">Destino N</span>
                 <input id="moveDestN" type="number" step="0.001" placeholder="Norte" />
               </label>
             </div>
-            <button id="btnMoveToCoord" class="btn btn-secondary btn-full mt-sm">Trasladar Vértice a Destino</button>
+            <button id="btnMoveToCoord" class="btn btn-secondary btn-full mt-sm" data-i18n="btnMoveToCoord">Trasladar Vértice a Destino</button>
             <div id="resMove" class="result-box hidden mt-sm"></div>
           </div>
 
           <!-- 11. DIVIDIR POLIGONO EN LOTES IGUALES -->
           <div id="cogo-lots" class="card cogo-panel hidden">
-            <h3>Dividir Polígono en Lotes Iguales</h3>
+            <h3 data-i18n="hLots">Dividir Polígono en Lotes Iguales</h3>
             <div class="grid-2 mt-xs">
               <label class="field">
-                <span>N° de partes iguales</span>
+                <span data-i18n="lblNumLots">N° de partes iguales</span>
                 <input id="lotsCount" type="number" min="2" max="20" step="1" value="2" />
               </label>
               <label class="field">
-                <span>Dirección de corte</span>
+                <span data-i18n="lblCutDir">Dirección de corte</span>
                 <select id="lotsDirMode">
-                  <option value="side" selected>Paralela a un lado</option>
-                  <option value="ns">Norte – Sur (0°)</option>
-                  <option value="ew">Este – Oeste (90°)</option>
-                  <option value="custom">Rumbo / Azimut libre</option>
+                  <option value="side" data-i18n="optCutSide" selected>Paralela a un lado</option>
+                  <option value="ns" data-i18n="optCutNS">Norte – Sur (0°)</option>
+                  <option value="ew" data-i18n="optCutEW">Este – Oeste (90°)</option>
+                  <option value="custom" data-i18n="optCutCustom">Rumbo / Azimut libre</option>
                 </select>
               </label>
             </div>
             <div class="quick-pills mt-xs">
-              <button type="button" class="chip-btn" data-lots="2">2 lotes</button>
-              <button type="button" class="chip-btn" data-lots="3">3 lotes</button>
-              <button type="button" class="chip-btn" data-lots="4">4 lotes</button>
-              <button type="button" class="chip-btn" data-lots="5">5 lotes</button>
-              <button type="button" class="chip-btn" data-lots="6">6 lotes</button>
+              <button type="button" class="chip-btn" data-lots="2">2</button>
+              <button type="button" class="chip-btn" data-lots="3">3</button>
+              <button type="button" class="chip-btn" data-lots="4">4</button>
+              <button type="button" class="chip-btn" data-lots="5">5</button>
+              <button type="button" class="chip-btn" data-lots="6">6</button>
             </div>
             <label id="lotsSideWrap" class="field mt-xs">
-              <span>Lado de referencia</span>
+              <span data-i18n="lblRefSide">Lado de referencia</span>
               <select id="lotsSideSelect"></select>
             </label>
             <label id="lotsCustomWrap" class="field mt-xs hidden">
-              <span>Rumbo o Azimut de corte</span>
+              <span data-i18n="lblCustomCutDir">Rumbo o Azimut de corte</span>
               <input id="lotsCustomDir" type="text" placeholder="Ej: N 30 00 00 E o 45" value="N 00 00 00 E" />
             </label>
             <div class="row-actions mt-sm">
-              <button id="btnCalcLots" class="btn btn-primary btn-full">Dividir en Lotes Iguales</button>
-              <button id="btnClearLots" class="btn btn-ghost">Limpiar</button>
+              <button id="btnCalcLots" class="btn btn-primary btn-full" data-i18n="btnCalcLots">Dividir en Lotes Iguales</button>
+              <button id="btnClearLots" class="btn btn-ghost" data-i18n="btnClear">Limpiar</button>
             </div>
             <div id="resLots" class="result-box hidden mt-sm"></div>
           </div>
 
           <div class="card">
-            <button id="btnClearAux" class="btn btn-ghost btn-full">Limpiar líneas auxiliares COGO</button>
+            <button id="btnClearAux" class="btn btn-ghost btn-full" data-i18n="btnClearAux">Limpiar líneas auxiliares COGO</button>
           </div>
         </section>
 
@@ -638,11 +639,11 @@
           <div class="card">
             <div class="card-header">
               <div class="segmented" id="tableSubToggle">
-                <button type="button" class="seg-btn active" data-sub="field">Cuadro de Campo</button>
-                <button type="button" class="seg-btn" data-sub="points">Puntos</button>
+                <button type="button" class="seg-btn active" data-sub="field" data-i18n="subFieldTable">Cuadro de Campo</button>
+                <button type="button" class="seg-btn" data-sub="points" data-i18n="subPointsList">Puntos</button>
               </div>
               <div class="row-actions">
-                <button id="btnCopyTable" class="chip-btn" title="Copiar tabla para pegar en Excel">📋 Copiar</button>
+                <button id="btnCopyTable" class="chip-btn" data-i18n="btnCopy" title="Copiar tabla para pegar en Excel">📋 Copiar</button>
                 <button id="btnExportCsv" class="chip-btn" title="Descargar puntos en CSV">CSV</button>
               </div>
             </div>
@@ -650,18 +651,18 @@
             <!-- Subtabla: Cuadro de Datos de Campo -->
             <div id="subFieldTable" class="table-wrap mt-xs">
               <div id="mainPolyTableHead" class="lot-table-head hidden">
-                <span>Polígono Completo (Finca Madre)</span>
+                <span data-i18n="mainPolyHead">Polígono Completo (Finca Madre)</span>
                 <span id="mainPolyTableArea"></span>
               </div>
               <table class="data-table">
                 <thead>
                   <tr>
-                    <th>Est.</th>
-                    <th>P.V.</th>
-                    <th>Rumbo</th>
-                    <th>Dist (m)</th>
-                    <th>Norte (Y)</th>
-                    <th>Este (X)</th>
+                    <th data-i18n="thEst">Est.</th>
+                    <th data-i18n="thPv">P.V.</th>
+                    <th data-i18n="thBearing">Rumbo</th>
+                    <th data-i18n="thDist">Dist (m)</th>
+                    <th data-i18n="thNorth">Norte (Y)</th>
+                    <th data-i18n="thEast">Este (X)</th>
                   </tr>
                 </thead>
                 <tbody id="fieldTableBody"></tbody>
@@ -675,10 +676,10 @@
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>Este (X)</th>
-                    <th>Norte (Y)</th>
-                    <th>Cota</th>
-                    <th>Acc.</th>
+                    <th data-i18n="thEast">Este (X)</th>
+                    <th data-i18n="thNorth">Norte (Y)</th>
+                    <th data-i18n="thElev">Cota</th>
+                    <th data-i18n="thAct">Acc.</th>
                   </tr>
                 </thead>
                 <tbody id="pointsTableBody"></tbody>
@@ -695,11 +696,11 @@
 
         <!-- Selector flotante de Basemap -->
         <div class="floating-basemap" role="group" aria-label="Mapa base">
-          <button class="bm-btn active" data-bm="satellite" title="Imagen Satelital (Esri World Imagery)">Satelital</button>
-          <button class="bm-btn" data-bm="hybrid" title="Satelital con etiquetas de calles y lugares">Híbrido</button>
-          <button class="bm-btn" data-bm="osm" title="OpenStreetMap (Calles)">StreetMap</button>
-          <button class="bm-btn" data-bm="topo" title="Mapa Topográfico con curvas de nivel">Topo</button>
-          <button class="bm-btn" data-bm="cad" title="Plano CAD con cuadrícula de coordenadas">Plano CAD</button>
+          <button class="bm-btn active" data-bm="satellite" data-i18n="bmSat" title="Imagen Satelital (Esri World Imagery)">Satelital</button>
+          <button class="bm-btn" data-bm="hybrid" data-i18n="bmHybrid" title="Satelital con etiquetas de calles y lugares">Híbrido</button>
+          <button class="bm-btn" data-bm="osm" data-i18n="bmStreet" title="Mapa de Calles (Esri World Street Map)">StreetMap</button>
+          <button class="bm-btn" data-bm="topo" data-i18n="bmTopo" title="Mapa Topográfico con curvas de nivel">Topo</button>
+          <button class="bm-btn" data-bm="cad" data-i18n="bmCad" title="Plano CAD con cuadrícula de coordenadas">Plano CAD</button>
         </div>
 
         <!-- Herramientas flotantes del visor -->
@@ -723,8 +724,8 @@
         <!-- Banner de modo captura / dibujo en mapa -->
         <div id="pickBanner" class="pick-banner hidden">
           <span id="pickBannerText">Haga clic en el mapa para seleccionar el punto</span>
-          <button id="btnFinishDraw" class="chip-btn finish-btn hidden">✓ Terminar y Cerrar</button>
-          <button id="btnCancelPick" class="chip-btn">Cancelar (Esc)</button>
+          <button id="btnFinishDraw" class="chip-btn finish-btn hidden" data-i18n="btnFinishDraw">✓ Terminar y Cerrar</button>
+          <button id="btnCancelPick" class="chip-btn" data-i18n="btnCancelEsc">Cancelar (Esc)</button>
         </div>
 
         <!-- Barra HUD inferior de coordenadas en vivo -->
@@ -741,21 +742,21 @@
   <!-- ==================== MODAL IMPORTAR CSV / TXT ==================== -->
   <dialog id="importDialog" class="modal">
     <div class="modal-head">
-      <h2>Importar Puntos desde CSV / TXT</h2>
+      <h2 data-i18n="modImportTitle">Importar Puntos desde CSV / TXT</h2>
       <button class="icon-btn modal-close" data-close="importDialog" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
       <div id="dropZone" class="drop-zone">
-        <p><strong>Arrastra tu archivo .CSV o .TXT aquí</strong> o haz clic para seleccionarlo</p>
-        <small>Soporta exportaciones de estación total, RTK, Civil 3D, Leica, Trimble y Topcon</small>
+        <p><strong data-i18n="dropTitle">Arrastra tu archivo .CSV o .TXT aquí</strong></p>
+        <small data-i18n="dropSub">Soporta exportaciones de estación total, RTK, Civil 3D, Leica, Trimble y Topcon</small>
         <input id="fileInput" type="file" accept=".csv,.txt,.xyz,.pts,.asc" hidden />
       </div>
 
       <div class="grid-3 mt-sm">
         <label class="field">
-          <span>Formato de Columnas</span>
+          <span data-i18n="lblColFormat">Formato de Columnas</span>
           <select id="importFormat">
-            <option value="PNEZD" selected>P, N, E, Z, D (Estándar)</option>
+            <option value="PNEZD" selected>P, N, E, Z, D</option>
             <option value="PENZD">P, E, N, Z, D</option>
             <option value="NEZ">N, E, Z</option>
             <option value="ENZ">E, N, Z</option>
@@ -764,27 +765,27 @@
           </select>
         </label>
         <label class="field">
-          <span>Separador</span>
+          <span data-i18n="lblDelim">Separador</span>
           <select id="importDelim">
-            <option value="auto" selected>Detectar automáticamente</option>
+            <option value="auto" selected>Auto</option>
             <option value=",">Coma (,)</option>
             <option value=";">Punto y coma (;)</option>
-            <option value="&#9;">Tabulación (Tab)</option>
-            <option value="whitespace">Espacios</option>
+            <option value="&#9;">Tab</option>
+            <option value="whitespace">Espacios / Space</option>
           </select>
         </label>
         <label class="field">
-          <span>Acción</span>
+          <span data-i18n="lblImportAction">Acción</span>
           <select id="importAction">
-            <option value="replace" selected>Reemplazar puntos actuales</option>
-            <option value="append">Agregar al dibujo actual</option>
+            <option value="replace" data-i18n="optReplace" selected>Reemplazar puntos actuales</option>
+            <option value="append" data-i18n="optAppend">Agregar al dibujo actual</option>
           </select>
         </label>
       </div>
 
       <label class="field mt-sm">
-        <span>O pega directamente tus coordenadas (1 punto por línea):</span>
-        <textarea id="importTextarea" rows="5" placeholder="P1,993450.000,663250.000,15.0,MOJON&#10;P2,993485.200,663292.500,15.4,LINDERO&#10;P3,993440.100,663320.800,14.9,LINDERO"></textarea>
+        <span data-i18n="lblPasteCoords">O pega directamente tus coordenadas (1 punto por línea):</span>
+        <textarea id="importTextarea" rows="5" placeholder="P1,932597.318,342527.835,0.00,MOJON 1&#10;P2,932534.131,342604.985,0.00,MOJON 2"></textarea>
       </label>
 
       <div id="importPreview" class="import-preview mt-sm"></div>
@@ -792,11 +793,11 @@
     <div class="modal-foot">
       <label class="switch-inline">
         <input id="importAutoClose" type="checkbox" checked />
-        <span>Cerrar poligonal automáticamente</span>
+        <span data-i18n="lblAutoClose">Cerrar poligonal automáticamente</span>
       </label>
       <div class="row-actions">
-        <button class="btn btn-ghost" data-close="importDialog">Cancelar</button>
-        <button id="btnConfirmImport" class="btn btn-primary">Importar Puntos</button>
+        <button class="btn btn-ghost" data-close="importDialog" data-i18n="btnCancel">Cancelar</button>
+        <button id="btnConfirmImport" class="btn btn-primary" data-i18n="btnConfirmImport">Importar Puntos</button>
       </div>
     </div>
   </dialog>
@@ -804,40 +805,40 @@
   <!-- ==================== MODAL EXPORTAR DXF ==================== -->
   <dialog id="dxfDialog" class="modal">
     <div class="modal-head">
-      <h2>Exportar Dibujo a DXF (AutoCAD / Civil 3D)</h2>
+      <h2 data-i18n="modDxfTitle">Exportar Dibujo a DXF (AutoCAD / Civil 3D)</h2>
       <button class="icon-btn modal-close" data-close="dxfDialog" aria-label="Cerrar">✕</button>
     </div>
     <div class="modal-body">
-      <p class="modal-note">
-        Genera un archivo <strong>DXF estándar (R12/AC1009)</strong> en coordenadas reales (metros) con capas separadas y el <strong>Cuadro de Datos de Campo</strong> dibujado vectorialmente.
+      <p class="modal-note" data-i18n="dxfNote">
+        Genera un archivo DXF estándar (R12/AC1009) en coordenadas reales (metros) con capas separadas y el Cuadro de Datos de Campo dibujado vectorialmente.
       </p>
 
       <div class="grid-2 mt-sm">
         <label class="field">
-          <span>Nombre del archivo</span>
-          <input id="dxfFilename" type="text" value="Lote_Panama_01.dxf" />
+          <span data-i18n="lblFilename">Nombre del archivo</span>
+          <input id="dxfFilename" type="text" value="Finca_Chiriqui_17N.dxf" />
         </label>
         <label class="field">
-          <span>Escala de textos (<span id="dxfScaleVal">1.0x</span>)</span>
+          <span><span data-i18n="lblTextScale">Escala de textos</span> (<span id="dxfScaleVal">1.0x</span>)</span>
           <input id="dxfTextScale" type="range" min="0.5" max="2.5" step="0.1" value="1.0" />
         </label>
       </div>
 
       <div class="checklist-grid mt-sm">
-        <label class="check-card"><input id="dxfOptPoly" type="checkbox" checked /><span>Poligonal / Linderos (<code>TOPO_POLIGONAL</code>)</span></label>
-        <label class="check-card"><input id="dxfOptPts" type="checkbox" checked /><span>Puntos, vértices e IDs (<code>TOPO_PUNTOS</code>)</span></label>
-        <label class="check-card"><input id="dxfOptBearings" type="checkbox" checked /><span>Rumbos y distancias rotados (<code>TOPO_RUMBOS_DIST</code>)</span></label>
-        <label class="check-card"><input id="dxfOptArea" type="checkbox" checked /><span>Área y perímetro en centroide (<code>TOPO_AREA_CENTRO</code>)</span></label>
-        <label class="check-card highlight"><input id="dxfOptTable" type="checkbox" checked /><span><strong>Cuadro de Datos de Campo</strong> (<code>TOPO_CUADRO_DATOS</code>)</span></label>
-        <label class="check-card"><input id="dxfOptNorth" type="checkbox" checked /><span>Flecha Norte vectorial (<code>TOPO_NORTE</code>)</span></label>
-        <label class="check-card"><input id="dxfOptGrid" type="checkbox" checked /><span>Cuadrícula y cruces de coordenadas (<code>TOPO_CUADRICULA</code>)</span></label>
+        <label class="check-card"><input id="dxfOptPoly" type="checkbox" checked /><span><span data-i18n="dxfOptPoly">Poligonal / Linderos</span> (<code>TOPO_POLIGONAL</code>)</span></label>
+        <label class="check-card"><input id="dxfOptPts" type="checkbox" checked /><span><span data-i18n="dxfOptPts">Puntos, vértices e IDs</span> (<code>TOPO_PUNTOS</code>)</span></label>
+        <label class="check-card"><input id="dxfOptBearings" type="checkbox" checked /><span><span data-i18n="dxfOptBearings">Rumbos y distancias rotados</span> (<code>TOPO_RUMBOS_DIST</code>)</span></label>
+        <label class="check-card"><input id="dxfOptArea" type="checkbox" checked /><span><span data-i18n="dxfOptArea">Área y perímetro en centroide</span> (<code>TOPO_AREA_CENTRO</code>)</span></label>
+        <label class="check-card highlight"><input id="dxfOptTable" type="checkbox" checked /><span><strong data-i18n="dxfOptTable">Cuadro de Datos de Campo</strong> (<code>TOPO_CUADRO_DATOS</code>)</span></label>
+        <label class="check-card"><input id="dxfOptNorth" type="checkbox" checked /><span><span data-i18n="dxfOptNorth">Flecha Norte vectorial</span> (<code>TOPO_NORTE</code>)</span></label>
+        <label class="check-card"><input id="dxfOptGrid" type="checkbox" checked /><span><span data-i18n="dxfOptGrid">Cuadrícula y cruces de coordenadas</span> (<code>TOPO_CUADRICULA</code>)</span></label>
       </div>
     </div>
     <div class="modal-foot">
       <span id="dxfSummaryMeta" class="muted-meta"></span>
       <div class="row-actions">
-        <button class="btn btn-ghost" data-close="dxfDialog">Cancelar</button>
-        <button id="btnDownloadDxf" class="btn btn-primary">Descargar Archivo .DXF</button>
+        <button class="btn btn-ghost" data-close="dxfDialog" data-i18n="btnCancel">Cancelar</button>
+        <button id="btnDownloadDxf" class="btn btn-primary" data-i18n="btnDownloadDxf">Descargar Archivo .DXF</button>
       </div>
     </div>
   </dialog>
@@ -851,6 +852,7 @@
   <script src="js/cogo.js"></script>
   <script src="js/dxf.js"></script>
   <script src="js/io.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/map.js"></script>
   <script src="js/app.js"></script>
 </body>

@@ -155,7 +155,7 @@
     $('statAreaM2').textContent = metrics.areaM2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     $('statAreaHa').textContent = metrics.areaHa.toFixed(4);
     $('statPerim').textContent = metrics.perimeter.toFixed(3);
-    $('statVaras').textContent = metrics.areaVaras2.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    $('statAcres').textContent = metrics.areaAcres.toFixed(4);
   }
 
   function renderTables() {
@@ -432,6 +432,13 @@
       }
       mapEngine.setCRS(state.crsMode, state.utmZone, state.utmHemi);
       showToast(`Sistema cambiado a: ${state.crsLabel}`);
+    });
+
+    // Idioma ES / EN
+    $('btnLangToggle').addEventListener('click', () => {
+      if (!global.TopoI18n) return;
+      const lang = global.TopoI18n.toggleLanguage();
+      showToast(lang === 'en' ? 'Language switched to English' : 'Idioma cambiado a Español');
     });
 
     // Tema Claro / Oscuro
@@ -1450,6 +1457,7 @@
     });
 
     bindEvents();
+    if (global.TopoI18n) global.TopoI18n.applyLanguage();
     loadPanamaDemo();
   }
 

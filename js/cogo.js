@@ -421,7 +421,7 @@
         areaM2: 0,
         areaHa: 0,
         areaKm2: 0,
-        areaVaras2: 0,
+        areaAcres: 0,
         perimeter: 0,
         centroid: points && points[0] ? { e: points[0].e, n: points[0].n } : null,
         legs: []
@@ -454,7 +454,7 @@
         areaM2: 0,
         areaHa: 0,
         areaKm2: 0,
-        areaVaras2: 0,
+        areaAcres: 0,
         perimeter,
         centroid: { e: avgE, n: avgN },
         legs
@@ -497,7 +497,7 @@
       areaM2,
       areaHa: areaM2 / 10000,
       areaKm2: areaM2 / 1000000,
-      areaVaras2: areaM2 / 0.698737, // 1 vara² centroamericana ≈ 0.698737 m²
+      areaAcres: areaM2 / 4046.8564224, // 1 acre internacional = 4046.8564224 m²
       perimeter,
       centroid,
       legs
@@ -790,7 +790,7 @@
         legs: m.legs,
         areaM2: m.areaM2,
         areaHa: m.areaHa,
-        areaVaras2: m.areaVaras2,
+        areaAcres: m.areaAcres,
         perimeter: m.perimeter,
         centroid: m.centroid
       });
