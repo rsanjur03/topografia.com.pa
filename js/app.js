@@ -148,6 +148,20 @@
         sideSel.value = prevSide;
       }
     }
+
+    // Actualizar selects dentro de las filas de control Helmert 2D en COGO
+    document.querySelectorAll('.cogo-helmert-pt').forEach((sel, idx) => {
+      const prev = sel.value;
+      sel.innerHTML = '';
+      state.points.forEach((p, pIdx) => {
+        const opt = document.createElement('option');
+        opt.value = String(pIdx);
+        opt.textContent = `${p.id} (${p.e.toFixed(2)}, ${p.n.toFixed(2)})`;
+        sel.appendChild(opt);
+      });
+      if (prev && state.points[Number(prev)]) sel.value = prev;
+      else if (state.points[idx]) sel.value = String(idx);
+    });
   }
 
   function updateMetrics() {
@@ -1199,6 +1213,141 @@
       showToast('División de lotes limpiada');
     });
 
+    // 12. Georreferenciar / Ajustar a Puntos de Control (Helmert 2D en COGO)
+    const helmertRowsContainer = $('cogoHelmertRows');
+    let lastCogoHelmertFit = null;
+
+    function addCogoHelmertRow(defaultIdx = 0) {
+      if (!helmertRowsContainer) return;
+      const row = document.createElement('div');
+      row.className = 'helmert-mini-row';
+      row.innerHTML = `
+        <div class="helmert-mini-row-top">
+          <select class="cogo-helmert-pt" title="Punto local del dibujo"></select>
+          <button type="button" class="tbl-act-btn del cogo-helmert-del" title="Quitar punto de control">✕</button>
+        </div>
+        <div class="grid-3">
+          <input type="number" step="0.001" class="ch-te" placeholder="Este UTM (X)" />
+          <input type="number" step="0.001" class="ch-tn" placeholder="Norte UTM (Y)" />
+          <input type="number" step="0.01" class="ch-tz" placeholder="Cota Z (opc)" />
+        </div>
+      `;
+      helmertRowsContainer.appendChild(row);
+      const sel = row.querySelector('.cogo-helmert-pt');
+      state.points.forEach((p, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = `${p.id} (${p.e.toFixed(2)}, ${p.n.toFixed(2)})`;
+        sel.appendChild(opt);
+      });
+      if (state.points[defaultIdx]) sel.value = String(defaultIdx);
+
+      row.querySelector('.cogo-helmert-del').addEventListener('click', () => {
+        if (helmertRowsContainer.children.length <= 2) {
+          showToast('Se requieren al menos 2 puntos de control.');
+          return;
+        }
+        row.remove();
+      });
+    }
+
+    addCogoHelmertRow(0);
+    addCogoHelmertRow(1);
+
+    $('btnCogoAddCtrl').addEventListener('click', () => {
+      addCogoHelmertRow(Math.min(helmertRowsContainer.children.length, Math.max(0, state.points.length - 1)));
+    });
+
+    function computeCogoHelmert() {
+      const box = $('resCogoHelmert');
+      const pairs = [];
+      helmertRowsContainer.querySelectorAll('.helmert-mini-row').forEach((row) => {
+        const idx = parseInt(row.querySelector('.cogo-helmert-pt').value, 10);
+        const pt = state.points[idx];
+        const te = parseFloat(row.querySelector('.ch-te').value);
+        const tn = parseFloat(row.querySelector('.ch-tn').value);
+        const tzRaw = row.querySelector('.ch-tz').value;
+        const tz = tzRaw !== '' ? parseFloat(tzRaw) : NaN;
+        if (pt && Number.isFinite(te) && Number.isFinite(tn)) {
+          pairs.push({
+            id: pt.id,
+            localE: pt.e,
+            localN: pt.n,
+            localZ: Number(pt.z) || 0,
+            targetE: te,
+            targetN: tn,
+            targetZ: tz
+          });
+        }
+      });
+
+      const fixedScale = $('cogoHelmertMode').value === 'rigid';
+      const fit = C.helmert2D(pairs, { fixedScale });
+      if (!fit.ok) {
+        lastCogoHelmertFit = null;
+        box.className = 'result-box error mt-sm';
+        box.textContent = fit.error;
+        box.classList.remove('hidden');
+        return null;
+      }
+
+      lastCogoHelmertFit = fit;
+      const resRows = fit.residuals.map(r =>
+        `<div class="result-kv"><span>${r.id} (vE/vN):</span><code>${r.vE.toFixed(4)} / ${r.vN.toFixed(4)} m (Err ${r.vH.toFixed(4)} m)</code></div>`
+      ).join('');
+
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Puntos de control:</span><code>${fit.count} (${fixedScale ? 'Rígido' : 'Helmert 2D'})</code></div>
+        <div class="result-kv"><span>Rotación Horaria:</span><code>${fit.rotCwDms} (${fit.rotCwDeg.toFixed(5)}°)</code></div>
+        <div class="result-kv"><span>Factor de Escala:</span><code>${fit.scale.toFixed(8)} (${fit.ppm >= 0 ? '+' : ''}${fit.ppm.toFixed(1)} ppm)</code></div>
+        ${fit.hasVerticalShift ? `<div class="result-kv"><span>Ajuste Vertical ΔZ:</span><code>${fit.dZ >= 0 ? '+' : ''}${fit.dZ.toFixed(3)} m</code></div>` : ''}
+        <div class="result-kv"><span>RMSE Horizontal:</span><code>${fit.rmseH.toFixed(4)} m</code></div>
+        <hr class="sep" style="margin:6px 0;" />
+        ${resRows}
+      `;
+      box.classList.remove('hidden');
+      return fit;
+    }
+
+    $('btnCogoHelmertCalc').addEventListener('click', computeCogoHelmert);
+
+    $('btnCogoHelmertApply').addEventListener('click', () => {
+      const fit = computeCogoHelmert();
+      if (!fit) return;
+      state.points = C.applyHelmert2D(state.points, fit);
+      state.lotDivision = null;
+      state.curves = [];
+      state.auxLines = [];
+      state.closureInfo = null;
+
+      const targetCrs = $('cogoHelmertCrs').value;
+      if (targetCrs === 'utm17N' || targetCrs === 'utm18N') {
+        const z = targetCrs === 'utm18N' ? 18 : 17;
+        state.crsMode = 'utm';
+        state.utmZone = z;
+        state.utmHemi = 'N';
+        state.crsLabel = `UTM WGS84 ZONA ${z}N (PANAMA)`;
+        $('crsSelect').value = targetCrs;
+        $('hudCrsBadge').textContent = `UTM WGS84 · ${z}N`;
+        $('hudLatLonWrap').classList.remove('hidden');
+        mapEngine.setCRS('utm', z, 'N');
+        if (mapEngine.basemap === 'cad') {
+          document.querySelectorAll('.bm-btn').forEach(b => b.classList.toggle('active', b.dataset.bm === 'satellite'));
+          mapEngine.setBasemap('satellite');
+        }
+      }
+
+      if (state.points[0]) {
+        $('initE').value = state.points[0].e.toFixed(3);
+        $('initN').value = state.points[0].n.toFixed(3);
+        $('initZ').value = (Number(state.points[0].z) || 0).toFixed(2);
+      }
+
+      refreshAll(true);
+      showToast(`Levantamiento reproyectado (${state.points.length} pts · RMSE ${fit.rmseH.toFixed(4)} m)`);
+    });
+
     $('btnClearAux').addEventListener('click', () => {
       state.auxLines = [];
       refreshAll(false);
@@ -1584,6 +1733,47 @@
           mapEngine.focusPoint({ e, n });
         }, 120);
         showToast(`Punto ${label} ubicado en mapa: E ${e.toFixed(3)}, N ${n.toFixed(3)}`);
+      },
+      loadSurveyOnMap: (pts, zone = 17, hemi = 'N', title = 'Reproyectado_UTM') => {
+        if (!pts || pts.length === 0) return;
+        state.crsMode = 'utm';
+        state.utmZone = Number(zone) || 17;
+        state.utmHemi = hemi || 'N';
+        state.crsLabel = `UTM WGS84 ZONA ${state.utmZone}${state.utmHemi}`;
+        state.projectName = title;
+        $('projectNameInput').value = title;
+        if (state.utmZone === 17) $('crsSelect').value = 'utm17N';
+        else if (state.utmZone === 18) $('crsSelect').value = 'utm18N';
+        $('hudCrsBadge').textContent = `UTM WGS84 · ${state.utmZone}${state.utmHemi}`;
+        $('hudLatLonWrap').classList.remove('hidden');
+
+        state.points = pts.map(p => ({ ...p }));
+        state.closed = pts.length >= 3;
+        state.curves = [];
+        state.auxLines = [];
+        state.lotDivision = null;
+        state.closureInfo = null;
+        $('chkClosedPoly').checked = state.closed;
+
+        if (state.points[0]) {
+          $('initId').value = state.points[0].id;
+          $('initE').value = state.points[0].e.toFixed(3);
+          $('initN').value = state.points[0].n.toFixed(3);
+          $('initZ').value = (Number(state.points[0].z) || 0).toFixed(2);
+          $('initDesc').value = state.points[0].desc || '';
+        }
+
+        mapEngine.setCRS('utm', state.utmZone, state.utmHemi);
+        if (mapEngine.basemap === 'cad') {
+          document.querySelectorAll('.bm-btn').forEach(b => b.classList.toggle('active', b.dataset.bm === 'satellite'));
+          mapEngine.setBasemap('satellite');
+        }
+        refreshAll(false);
+        setTimeout(() => {
+          mapEngine.invalidateSize();
+          mapEngine.fitBounds();
+        }, 120);
+        showToast(`${pts.length} puntos reproyectados cargados en COGO Gráfico`);
       }
     };
   }

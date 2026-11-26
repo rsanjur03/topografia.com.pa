@@ -808,6 +808,157 @@
     };
   }
 
+  /**
+   * 14. TRANSFORMACIÓN HELMERT 2D / CALIBRACIÓN DE SITIO POR MÍNIMOS CUADRADOS
+   * Ajusta coordenadas locales arbitrarias (x, y, z) a coordenadas oficiales (E, N, Z)
+   * usando 2 o más puntos de control.
+   *
+   * Modelo conforme 2D:
+   *   E = a * x - b * y + tE
+   *   N = b * x + a * y + tN
+   * donde s = sqrt(a^2 + b^2) es el factor de escala y rotCwDeg = atan2(-b, a) es la rotación horaria.
+   *
+   * @param {Array} controlPairs - [{ id, localE, localN, localZ, targetE, targetN, targetZ }]
+   * @param {Object} options - { fixedScale: false }
+   */
+  function helmert2D(controlPairs, options = {}) {
+    const pairs = (controlPairs || []).filter(p =>
+      Number.isFinite(p.localE) && Number.isFinite(p.localN) &&
+      Number.isFinite(p.targetE) && Number.isFinite(p.targetN)
+    );
+    const n = pairs.length;
+    if (n < 2) {
+      return { ok: false, error: 'Se necesitan al menos 2 puntos de control válidos (local y oficial).' };
+    }
+
+    const fixedScale = Boolean(options.fixedScale);
+
+    // Centroides para estabilidad numérica (evita cancelación catastrófica con coordenadas UTM grandes)
+    let meanX = 0, meanY = 0, meanE = 0, meanN = 0;
+    for (const p of pairs) {
+      meanX += p.localE;
+      meanY += p.localN;
+      meanE += p.targetE;
+      meanN += p.targetN;
+    }
+    meanX /= n; meanY /= n; meanE /= n; meanN /= n;
+
+    let sXXYY = 0, sumC = 0, sumS = 0;
+    for (const p of pairs) {
+      const dx = p.localE - meanX;
+      const dy = p.localN - meanY;
+      const dE = p.targetE - meanE;
+      const dN = p.targetN - meanN;
+      sXXYY += dx * dx + dy * dy;
+      sumC += dx * dE + dy * dN;
+      sumS += dx * dN - dy * dE;
+    }
+
+    if (sXXYY < 1e-10) {
+      return { ok: false, error: 'Los puntos de control locales coinciden entre sí (distancia nula).' };
+    }
+
+    let a, b, scale;
+    if (fixedScale) {
+      const r = Math.hypot(sumC, sumS);
+      if (r < 1e-10) {
+        return { ok: false, error: 'Los puntos de control oficiales coinciden entre sí.' };
+      }
+      a = sumC / r;
+      b = sumS / r;
+      scale = 1.0;
+    } else {
+      a = sumC / sXXYY;
+      b = sumS / sXXYY;
+      scale = Math.hypot(a, b);
+      if (scale < 1e-9) {
+        return { ok: false, error: 'Factor de escala calculado degenerado (verifica los puntos de control).' };
+      }
+    }
+
+    const tE = meanE - (a * meanX - b * meanY);
+    const tN = meanN - (b * meanX + a * meanY);
+
+    // Rotación horaria (convención topográfica: + horario / derecha, - antihorario / izquierda)
+    const rotCwDeg = Math.atan2(-b, a) * RAD2DEG;
+    const ppm = (scale - 1.0) * 1e6;
+
+    // Ajuste vertical promedio ΔZ (si hay cotas oficiales válidas)
+    let zCount = 0, zSum = 0;
+    for (const p of pairs) {
+      if (Number.isFinite(p.targetZ)) {
+        zSum += p.targetZ - (Number.isFinite(p.localZ) ? p.localZ : 0);
+        zCount += 1;
+      }
+    }
+    const dZ = zCount > 0 ? zSum / zCount : 0;
+    const hasVerticalShift = zCount > 0;
+
+    // Residuales por punto de control y RMSE horizontal
+    let sumSqE = 0, sumSqN = 0, maxErrH = 0;
+    const residuals = pairs.map((p, idx) => {
+      const calcE = a * p.localE - b * p.localN + tE;
+      const calcN = b * p.localE + a * p.localN + tN;
+      const calcZ = (Number.isFinite(p.localZ) ? p.localZ : 0) + dZ;
+      const vE = calcE - p.targetE;
+      const vN = calcN - p.targetN;
+      const vH = Math.hypot(vE, vN);
+      const vZ = Number.isFinite(p.targetZ) ? (calcZ - p.targetZ) : null;
+      sumSqE += vE * vE;
+      sumSqN += vN * vN;
+      if (vH > maxErrH) maxErrH = vH;
+      return {
+        id: p.id || `CTRL_${idx + 1}`,
+        localE: p.localE,
+        localN: p.localN,
+        targetE: p.targetE,
+        targetN: p.targetN,
+        calcE,
+        calcN,
+        vE,
+        vN,
+        vH,
+        vZ
+      };
+    });
+
+    const rmseE = Math.sqrt(sumSqE / n);
+    const rmseN = Math.sqrt(sumSqN / n);
+    const rmseH = Math.sqrt((sumSqE + sumSqN) / n);
+
+    return {
+      ok: true,
+      count: n,
+      fixedScale,
+      a,
+      b,
+      tE,
+      tN,
+      dZ,
+      hasVerticalShift,
+      scale,
+      ppm,
+      rotCwDeg,
+      rotCwDms: formatDms(rotCwDeg, 2),
+      rmseE,
+      rmseN,
+      rmseH,
+      maxErrH,
+      residuals
+    };
+  }
+
+  /** Aplica una transformación Helmert 2D calculada a un arreglo de puntos { id, e, n, z, desc } */
+  function applyHelmert2D(points, fit) {
+    if (!fit || !fit.ok) return points;
+    return (points || []).map(p => ({
+      ...p,
+      e: fit.a * p.e - fit.b * p.n + fit.tE,
+      n: fit.b * p.e + fit.a * p.n + fit.tN,
+      z: (Number(p.z) || 0) + (fit.hasVerticalShift ? fit.dZ : 0)
+    }));
+  }
+
   global.TopoCOGO = {
     normAzimuth,
     dmsToDeg,
@@ -829,6 +980,8 @@
     bowditchAdjust,
     rotatePoints,
     translatePoints,
-    subdividePolygonEqualArea
+    subdividePolygonEqualArea,
+    helmert2D,
+    applyHelmert2D
   };
 })(window);

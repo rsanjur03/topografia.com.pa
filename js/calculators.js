@@ -24,7 +24,7 @@
   let calcOverlayGroup = null;
   let lastCalcMapPoints = [];
 
-  const MAP_ENABLED_CALCS = new Set(['utm-geo', 'ecef-utm', 'nad27-wgs84']);
+  const MAP_ENABLED_CALCS = new Set(['utm-geo', 'ecef-utm', 'nad27-wgs84', 'helmert']);
 
   function initCalcMiniMap() {
     if (calcMap || typeof global.L === 'undefined' || !$('calcMiniMap')) return;
@@ -129,9 +129,9 @@
   }
 
   /**
-   * Dibuja 1 o más marcadores sobre el mini-mapa de las calculadoras y encuadra la vista.
+   * Dibuja 1 o más marcadores (y opcionalmente un polígono) sobre el mini-mapa de las calculadoras y encuadra la vista.
    * items: [{ lat, lon, label, color, popupHtml }]
-   * connectLine: si true, traza línea punteada entre los 2 puntos (ideal para desplazamiento NAD27 ↔ WGS84)
+   * connectLine: false | 'dashed' | 'polygon' (true equivale a 'dashed')
    */
   function updateCalcMiniMap(items, subtitleText = '', connectLine = false) {
     lastCalcMapPoints = (items || []).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
@@ -145,7 +145,14 @@
 
     const latLngs = lastCalcMapPoints.map(p => [p.lat, p.lon]);
 
-    if (connectLine && latLngs.length >= 2) {
+    if (connectLine === 'polygon' && latLngs.length >= 3) {
+      L.polygon(latLngs, {
+        color: '#00e5a0',
+        weight: 2.5,
+        fillColor: '#00e5a0',
+        fillOpacity: 0.16
+      }).addTo(calcOverlayGroup);
+    } else if (connectLine && latLngs.length >= 2) {
       L.polyline(latLngs, {
         color: '#fbbf24',
         weight: 2.5,
@@ -201,6 +208,7 @@
           if (activeCalcId === 'utm-geo') calcUtmToGeo();
           else if (activeCalcId === 'ecef-utm') calcEcefToUtm();
           else if (activeCalcId === 'nad27-wgs84') calcDatumTransform();
+          else if (activeCalcId === 'helmert') calcHelmertBatch();
         }
       }, 60);
     }
@@ -670,6 +678,186 @@
     renderGpsResult(Geo.dateToGps(y, m, d, t.h, t.m, t.s));
   }
 
+  // ==================== 6. AJUSTE LOCAL -> OFICIAL (HELMERT 2D MASIVO) ====================
+  const C = global.TopoCOGO;
+  const IO = global.TopoIO;
+  let lastC6ReprojPoints = [];
+
+  function addC6CtrlRow(data = {}) {
+    const tbody = $('c6CtrlTbody');
+    if (!tbody) return;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" class="ctrl-id" value="${data.id || `CTRL${tbody.children.length + 1}`}" /></td>
+      <td><input type="number" step="0.001" class="ctrl-le" value="${data.localE !== undefined ? data.localE : ''}" placeholder="1000.000" /></td>
+      <td><input type="number" step="0.001" class="ctrl-ln" value="${data.localN !== undefined ? data.localN : ''}" placeholder="1000.000" /></td>
+      <td><input type="number" step="0.01" class="ctrl-lz" value="${data.localZ !== undefined ? data.localZ : '0'}" /></td>
+      <td><input type="number" step="0.001" class="ctrl-te" value="${data.targetE !== undefined ? data.targetE : ''}" placeholder="342527.835" /></td>
+      <td><input type="number" step="0.001" class="ctrl-tn" value="${data.targetN !== undefined ? data.targetN : ''}" placeholder="932597.318" /></td>
+      <td><input type="number" step="0.01" class="ctrl-tz" value="${data.targetZ !== undefined ? data.targetZ : ''}" placeholder="opc." /></td>
+      <td><button type="button" class="tbl-act-btn del" title="Quitar fila">✕</button></td>
+    `;
+    tr.querySelector('.del').addEventListener('click', () => {
+      if (tbody.children.length <= 2) return;
+      tr.remove();
+    });
+    tbody.appendChild(tr);
+  }
+
+  function loadC6HelmertDemo() {
+    // Ejemplo realista: levantamiento de Estación Total en coordenadas arbitrarias (1000, 1000)
+    // rotado -22.5° respecto al polígono real de David, Chiriquí (UTM 17N), con 3 puntos de control RTK
+    const tbody = $('c6CtrlTbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    // Coordenadas oficiales reales del polígono de David, Chiriquí
+    const realPts = [
+      { id: 'P1', e: 342527.835, n: 932597.318, z: 48.50, desc: 'MOJON 1' },
+      { id: 'P2', e: 342604.985, n: 932534.131, z: 48.90, desc: 'MOJON 2' },
+      { id: 'P3', e: 342643.398, n: 932579.153, z: 48.30, desc: 'MOJON 3' },
+      { id: 'P4', e: 342564.762, n: 932639.872, z: 48.10, desc: 'MOJON 4' }
+    ];
+
+    // Generar su equivalente en coordenadas locales arbitrarias (origen 1000,1000 y rotado +22.5°)
+    const rotRad = (22.5 * Math.PI) / 180;
+    const cosA = Math.cos(rotRad), sinA = Math.sin(rotRad);
+    const localPts = realPts.map(p => {
+      const dx = p.e - realPts[0].e;
+      const dy = p.n - realPts[0].n;
+      return {
+        id: p.id,
+        e: 1000.0 + (dx * cosA - dy * sinA),
+        n: 1000.0 + (dx * sinA + dy * cosA),
+        z: p.z - 38.50,
+        desc: p.desc
+      };
+    });
+
+    // 3 puntos de control (P1, P2, P3) con ligera variación realista de campo (~6 mm en P3)
+    addC6CtrlRow({ id: 'P1', localE: localPts[0].e.toFixed(3), localN: localPts[0].n.toFixed(3), localZ: localPts[0].z.toFixed(2), targetE: realPts[0].e.toFixed(3), targetN: realPts[0].n.toFixed(3), targetZ: realPts[0].z.toFixed(2) });
+    addC6CtrlRow({ id: 'P2', localE: localPts[1].e.toFixed(3), localN: localPts[1].n.toFixed(3), localZ: localPts[1].z.toFixed(2), targetE: realPts[1].e.toFixed(3), targetN: realPts[1].n.toFixed(3), targetZ: realPts[1].z.toFixed(2) });
+    addC6CtrlRow({ id: 'P3', localE: localPts[2].e.toFixed(3), localN: localPts[2].n.toFixed(3), localZ: localPts[2].z.toFixed(2), targetE: (realPts[2].e + 0.005).toFixed(3), targetN: (realPts[2].n - 0.004).toFixed(3), targetZ: realPts[2].z.toFixed(2) });
+
+    $('c6UtmZone').value = '17';
+    $('c6UtmHemi').value = 'N';
+    $('c6Format').value = 'PNEZD';
+
+    // Cargar los 4 vértices locales (P, N, E, Z, D) en el área de levantamiento
+    const csvLines = ['Punto,Norte,Este,Cota,Descripcion'];
+    for (const lp of localPts) {
+      csvLines.push(`${lp.id},${lp.n.toFixed(3)},${lp.e.toFixed(3)},${lp.z.toFixed(2)},${lp.desc}`);
+    }
+    $('c6SurveyText').value = csvLines.join('\n');
+    calcHelmertBatch();
+  }
+
+  function calcHelmertBatch() {
+    const tbody = $('c6CtrlTbody');
+    const summaryBox = $('resC6Summary');
+    const resBody = $('c6ResidualsBody');
+    const outBody = $('c6OutputBody');
+    if (!tbody || !summaryBox) return;
+
+    const pairs = [];
+    tbody.querySelectorAll('tr').forEach((tr, idx) => {
+      const id = tr.querySelector('.ctrl-id').value.trim() || `CTRL${idx + 1}`;
+      const le = parseFloat(tr.querySelector('.ctrl-le').value);
+      const ln = parseFloat(tr.querySelector('.ctrl-ln').value);
+      const lz = parseFloat(tr.querySelector('.ctrl-lz').value);
+      const te = parseFloat(tr.querySelector('.ctrl-te').value);
+      const tn = parseFloat(tr.querySelector('.ctrl-tn').value);
+      const tzRaw = tr.querySelector('.ctrl-tz').value;
+      const tz = tzRaw !== '' ? parseFloat(tzRaw) : NaN;
+      if (Number.isFinite(le) && Number.isFinite(ln) && Number.isFinite(te) && Number.isFinite(tn)) {
+        pairs.push({ id, localE: le, localN: ln, localZ: Number.isFinite(lz) ? lz : 0, targetE: te, targetN: tn, targetZ: tz });
+      }
+    });
+
+    const fixedScale = $('c6Mode').value === 'rigid';
+    const fit = C.helmert2D(pairs, { fixedScale });
+    if (!fit.ok) {
+      summaryBox.className = 'result-box error mt-sm';
+      summaryBox.textContent = fit.error;
+      resBody.innerHTML = '';
+      outBody.innerHTML = '';
+      lastC6ReprojPoints = [];
+      return;
+    }
+
+    // Parsear levantamiento local completo (o usar los puntos de control si está vacío)
+    const rawText = $('c6SurveyText').value.trim();
+    let localSurvey = [];
+    if (rawText) {
+      const parsed = IO.parsePointsText(rawText, { format: $('c6Format').value, delimiter: 'auto' });
+      localSurvey = parsed.points;
+    }
+    if (localSurvey.length === 0) {
+      localSurvey = pairs.map(p => ({ id: p.id, e: p.localE, n: p.localN, z: p.localZ, desc: 'CONTROL' }));
+    }
+
+    const reproj = C.applyHelmert2D(localSurvey, fit);
+    lastC6ReprojPoints = reproj;
+
+    // Mostrar resumen de parámetros y calidad
+    summaryBox.className = 'result-box mt-sm';
+    summaryBox.innerHTML = [
+      kv('Modelo aplicado:', `${fixedScale ? 'Rígido 3 parámetros (Escala = 1.0)' : 'Helmert 2D Conforme (4 parámetros)'} · ${fit.count} controles`),
+      kv('Rotación Horaria (θ):', `${fit.rotCwDms} (${fit.rotCwDeg.toFixed(6)}°)`),
+      kv('Factor de Escala (s):', `${fit.scale.toFixed(8)} (${fit.ppm >= 0 ? '+' : ''}${fit.ppm.toFixed(2)} ppm)`),
+      kv('Traslación (tE / tN):', `${fit.tE.toFixed(3)} m / ${fit.tN.toFixed(3)} m`),
+      fit.hasVerticalShift ? kv('Ajuste Vertical (ΔZ):', `${fit.dZ >= 0 ? '+' : ''}${fit.dZ.toFixed(3)} m`) : '',
+      kv('RMSE Horizontal / Error Máx:', `${fit.rmseH.toFixed(4)} m / ${fit.maxErrH.toFixed(4)} m`),
+      kv('Puntos Reproyectados:', `${reproj.length} puntos`)
+    ].filter(Boolean).join('');
+
+    // Tabla de residuales
+    resBody.innerHTML = fit.residuals.map(r => `
+      <tr>
+        <td><strong>${r.id}</strong></td>
+        <td>${r.vE >= 0 ? '+' : ''}${r.vE.toFixed(4)}</td>
+        <td>${r.vN >= 0 ? '+' : ''}${r.vN.toFixed(4)}</td>
+        <td><strong>${r.vH.toFixed(4)}</strong></td>
+      </tr>
+    `).join('');
+
+    // Tabla de puntos reproyectados
+    outBody.innerHTML = reproj.map(p => `
+      <tr>
+        <td><strong>${p.id}</strong></td>
+        <td>${p.e.toFixed(3)}</td>
+        <td>${p.n.toFixed(3)}</td>
+        <td>${(Number(p.z) || 0).toFixed(2)}</td>
+        <td>${p.desc || '-'}</td>
+      </tr>
+    `).join('');
+
+    // Graficar en el visor de mapa si la calculadora Helmert está activa
+    const zone = parseInt($('c6UtmZone').value, 10) || 17;
+    const hemi = $('c6UtmHemi').value || 'N';
+    if (activeCalcId === 'helmert') {
+      const ctrlIds = new Set(pairs.map(p => p.id.toUpperCase()));
+      const mapItems = reproj.map((p) => {
+        if (!Geo.isPlausibleUtm(p.e, p.n)) return null;
+        const ll = Geo.utmToLatLon(p.e, p.n, zone, hemi, 'WGS84');
+        const isCtrl = ctrlIds.has(String(p.id).toUpperCase());
+        return {
+          lat: ll.lat,
+          lon: ll.lon,
+          label: isCtrl ? `${p.id} (CTRL)` : p.id,
+          color: isCtrl ? '#f59e0b' : '#00e5a0',
+          popupHtml: `<div class="map-popup"><div class="map-popup-title">${p.id} ${isCtrl ? '(Punto de Control)' : '(Reproyectado)'}</div><div><b>E:</b> ${p.e.toFixed(3)} m</div><div><b>N:</b> ${p.n.toFixed(3)} m</div><div><b>Z:</b> ${(Number(p.z) || 0).toFixed(2)} m</div></div>`
+        };
+      }).filter(Boolean);
+
+      updateCalcMiniMap(
+        mapItems,
+        `Levantamiento reproyectado a UTM ${zone}${hemi} (${reproj.length} pts · Rot ${fit.rotCwDeg.toFixed(3)}° · Esc ${fit.scale.toFixed(6)} · RMSE ${fit.rmseH.toFixed(4)} m)`,
+        mapItems.length >= 3 ? 'polygon' : 'dashed'
+      );
+    }
+  }
+
   // ==================== INICIALIZACIÓN ====================
   function initCalculators() {
     // 1. Switcher principal COGO <-> Calculadoras
@@ -771,6 +959,40 @@
       renderGpsMonthCalendar();
     });
 
+    // Calc 6: Ajuste Local -> Oficial (Helmert 2D)
+    $('btnC6AddCtrl').addEventListener('click', () => addC6CtrlRow());
+    $('btnC6LoadDemo').addEventListener('click', loadC6HelmertDemo);
+    $('btnC6Compute').addEventListener('click', calcHelmertBatch);
+    $('c6Mode').addEventListener('change', calcHelmertBatch);
+    $('btnC6UploadFile').addEventListener('click', () => $('c6FileInput').click());
+    $('c6FileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        $('c6SurveyText').value = reader.result || '';
+        calcHelmertBatch();
+      };
+      reader.readAsText(file, 'utf-8');
+      e.target.value = '';
+    });
+    $('btnC6ExportCsv').addEventListener('click', () => {
+      calcHelmertBatch();
+      if (lastC6ReprojPoints.length === 0) return;
+      const csv = IO.pointsToCSV(lastC6ReprojPoints, $('c6Format').value === 'PENZD' ? 'PENZD' : 'PNEZD');
+      IO.downloadFile('levantamiento_reproyectado_UTM.csv', csv, 'text/csv;charset=utf-8');
+    });
+    $('btnC6SendToCogo').addEventListener('click', () => {
+      calcHelmertBatch();
+      if (lastC6ReprojPoints.length === 0) return;
+      const zone = parseInt($('c6UtmZone').value, 10) || 17;
+      const hemi = $('c6UtmHemi').value || 'N';
+      setMainView('cogo');
+      if (global.TopoAppBridge && global.TopoAppBridge.loadSurveyOnMap) {
+        global.TopoAppBridge.loadSurveyOnMap(lastC6ReprojPoints, zone, hemi, 'Levantamiento_Ajustado_UTM');
+      }
+    });
+
     // Ejecutar cálculos iniciales de muestra para todas las calculadoras
     calcUtmToGeo();
     calcGeoToUtm();
@@ -780,6 +1002,7 @@
     calcDdToDms();
     calcDmsToDd();
     calcGpsFromDate();
+    loadC6HelmertDemo();
   }
 
   global.TopoCalculators = {

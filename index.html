@@ -287,6 +287,7 @@
                 <option value="rotate" data-i18n="optRotate">9. Girar Polígono / Puntos (desde Vértice)</option>
                 <option value="move" data-i18n="optMove">10. Mover / Trasladar Todos los Puntos</option>
                 <option value="lots" data-i18n="optLots">11. Dividir Polígono en Lotes Iguales (2, 3, N)</option>
+                <option value="helmert" data-i18n="optHelmert">12. Georreferenciar / Ajustar a Puntos de Control (Helmert 2D)</option>
               </select>
             </label>
           </div>
@@ -634,6 +635,40 @@
             <div id="resLots" class="result-box hidden mt-sm"></div>
           </div>
 
+          <!-- 12. GEORREFERENCIAR / AJUSTAR A PUNTOS DE CONTROL (HELMERT 2D) -->
+          <div id="cogo-helmert" class="card cogo-panel hidden">
+            <div class="card-header">
+              <h3 data-i18n="hCogoHelmert">Georreferenciar (Helmert 2D)</h3>
+              <button id="btnCogoAddCtrl" type="button" class="chip-btn" data-i18n="btnAddCtrl">+ Control</button>
+            </div>
+            <p class="muted-meta" style="margin:0 0 6px;line-height:1.4;" data-i18n="cogoHelmertHint">
+              Ajusta un levantamiento local/arbitrario a UTM oficial usando 2 o más puntos de control.
+            </p>
+            <div class="grid-2">
+              <label class="field">
+                <span data-i18n="lblHelmertMode">Tipo de Ajuste</span>
+                <select id="cogoHelmertMode">
+                  <option value="conformal" selected>Helmert 2D (Con escala)</option>
+                  <option value="rigid">Rígido (Escala = 1.0)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblTargetCrs">Sistema Destino</span>
+                <select id="cogoHelmertCrs">
+                  <option value="utm17N" selected>UTM WGS84 · 17N (Panamá)</option>
+                  <option value="utm18N">UTM WGS84 · 18N (Este)</option>
+                  <option value="keep">Mantener actual</option>
+                </select>
+              </label>
+            </div>
+            <div id="cogoHelmertRows" class="helmert-mini-rows mt-sm"></div>
+            <div class="row-actions mt-sm">
+              <button id="btnCogoHelmertCalc" type="button" class="btn btn-secondary btn-full" data-i18n="btnCalcFit">Calcular Ajuste</button>
+              <button id="btnCogoHelmertApply" type="button" class="btn btn-primary btn-full" data-i18n="btnApplyReproj">Reproyectar Todo</button>
+            </div>
+            <div id="resCogoHelmert" class="result-box hidden mt-sm"></div>
+          </div>
+
           <div class="card">
             <button id="btnClearAux" class="btn btn-ghost btn-full" data-i18n="btnClearAux">Limpiar líneas auxiliares COGO</button>
           </div>
@@ -780,6 +815,13 @@
           <span>
             <strong data-i18n="calc5Title">Calendario GPS (DOY / Week)</strong>
             <small data-i18n="calc5Sub">GPS Week · DOY · SOW · RINEX</small>
+          </span>
+        </button>
+        <button class="calc-nav-btn" data-calc="helmert">
+          <span class="calc-icon">🎯</span>
+          <span>
+            <strong data-i18n="calc6Title">Ajuste Local → Oficial</strong>
+            <small data-i18n="calc6Sub">Helmert 2D · Puntos de Control</small>
           </span>
         </button>
       </aside>
@@ -1048,6 +1090,129 @@
             </div>
 
             <div id="resC3Datum" class="result-box mt-sm"></div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 6: AJUSTE LOCAL -> OFICIAL (HELMERT 2D) ===== -->
+        <div id="calc-helmert" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc6Head">Ajuste de Levantamiento Local → Oficial (Helmert 2D)</h1>
+            <p data-i18n="calc6Desc">Reproyecta un levantamiento completo en coordenadas arbitrarias/locales (Estación Total) a coordenadas oficiales UTM WGS84 usando 2 o más puntos de control por Mínimos Cuadrados, con reporte de residuales, RMSE y exportación CSV.</p>
+          </div>
+
+          <!-- Paso 1: Puntos de Control -->
+          <div class="card calc-card">
+            <div class="card-header">
+              <h3 data-i18n="c6Step1Title">1. Puntos de Control (Mínimo 2 pares: Local → Oficial UTM)</h3>
+              <div class="row-actions">
+                <button id="btnC6LoadDemo" type="button" class="chip-btn" data-i18n="btnLoadDemoLocal">Cargar Ejemplo</button>
+                <button id="btnC6AddCtrl" type="button" class="chip-btn" data-i18n="btnAddCtrl">+ Agregar Control</button>
+              </div>
+            </div>
+
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span data-i18n="lblHelmertMode">Tipo de Transformación</span>
+                <select id="c6Mode">
+                  <option value="conformal" selected>Helmert 2D Conforme (4 parám.: Traslación + Rotación + Escala)</option>
+                  <option value="rigid">Rígida (3 parám.: Traslación + Rotación · Escala = 1.0)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblUtmZone">Zona UTM Destino</span>
+                <input id="c6UtmZone" type="number" min="1" max="60" value="17" />
+              </label>
+              <label class="field">
+                <span data-i18n="lblHemi">Hemisferio</span>
+                <select id="c6UtmHemi">
+                  <option value="N" selected>Norte (N)</option>
+                  <option value="S">Sur (S)</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="table-wrap mt-sm" style="max-height: 220px;">
+              <table class="data-table helmert-ctrl-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Local E (x)</th>
+                    <th>Local N (y)</th>
+                    <th>Local Z</th>
+                    <th>Oficial Este (X)</th>
+                    <th>Oficial Norte (Y)</th>
+                    <th>Oficial Z</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="c6CtrlTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Paso 2: Puntos del Levantamiento a Reproyectar -->
+          <div class="card calc-card mt-sm">
+            <div class="card-header">
+              <h3 data-i18n="c6Step2Title">2. Levantamiento en Coordenadas Locales (Subir CSV/TXT o Pegar)</h3>
+              <div class="row-actions">
+                <select id="c6Format" class="crs-select" style="max-width: 170px;">
+                  <option value="PNEZD" selected>P, N, E, Z, D</option>
+                  <option value="PENZD">P, E, N, Z, D</option>
+                  <option value="NEZ">N, E, Z</option>
+                  <option value="ENZ">E, N, Z</option>
+                  <option value="NE">N, E</option>
+                  <option value="EN">E, N</option>
+                </select>
+                <button id="btnC6UploadFile" type="button" class="chip-btn" data-i18n="btnUploadCsv">📂 Subir CSV/TXT</button>
+                <input id="c6FileInput" type="file" accept=".csv,.txt,.xyz,.pts,.asc" hidden />
+              </div>
+            </div>
+
+            <textarea id="c6SurveyText" class="helmert-textarea mt-xs" rows="5" placeholder="P1,1000.000,1000.000,10.00,MOJON 1&#10;P2,1085.000,1052.000,10.20,MOJON 2"></textarea>
+
+            <div class="row-actions mt-sm" style="flex-wrap:wrap;">
+              <button id="btnC6Compute" type="button" class="btn btn-primary" data-i18n="btnC6Compute">Calcular Ajuste y Reproyectar</button>
+              <button id="btnC6ExportCsv" type="button" class="btn btn-secondary" data-i18n="btnC6ExportCsv">Descargar CSV Reproyectado</button>
+              <button id="btnC6SendToCogo" type="button" class="btn btn-ghost" data-i18n="btnC6SendToCogo">📍 Cargar en COGO Gráfico (DXF/PDF)</button>
+            </div>
+
+            <div id="resC6Summary" class="result-box mt-sm"></div>
+
+            <div class="calc-grid-2 mt-sm">
+              <div>
+                <div class="form-section-title" data-i18n="c6ResidualsHead">Residuales de Puntos de Control</div>
+                <div class="table-wrap mt-xs" style="max-height: 210px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>vE (m)</th>
+                        <th>vN (m)</th>
+                        <th>Err H (m)</th>
+                      </tr>
+                    </thead>
+                    <tbody id="c6ResidualsBody"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div>
+                <div class="form-section-title" data-i18n="c6ReprojHead">Puntos Reproyectados (UTM Oficial)</div>
+                <div class="table-wrap mt-xs" style="max-height: 210px;">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Este UTM</th>
+                        <th>Norte UTM</th>
+                        <th>Cota</th>
+                        <th>Desc.</th>
+                      </tr>
+                    </thead>
+                    <tbody id="c6OutputBody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
