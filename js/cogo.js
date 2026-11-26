@@ -707,35 +707,23 @@
       sCuts.push((lo + hi) / 2);
     }
 
-    // Construir cada lote
-    const lots = [];
-    for (let j = 0; j < N; j++) {
-      let poly = points.map(p => ({ ...p }));
-      if (j > 0) {
-        poly = clipPolygonHalfPlane(poly, sCuts[j - 1], false, e0, n0, vx, vy);
-      }
-      if (j < N - 1) {
-        poly = clipPolygonHalfPlane(poly, sCuts[j], true, e0, n0, vx, vy);
-      }
-      // Asignar IDs limpios a vértices nuevos de corte
-      let cIdx = 1;
-      poly = poly.map(p => ({
-        ...p,
-        id: p.id || `L${j + 1}_C${cIdx++}`
-      }));
-      const m = polygonMetrics(poly, true);
-      lots.push({
-        index: j + 1,
-        name: `Lote ${j + 1}`,
-        points: poly,
-        areaM2: m.areaM2,
-        areaHa: m.areaHa,
-        perimeter: m.perimeter,
-        centroid: m.centroid
-      });
-    }
+    // Extraer líneas de corte exactas y asignar IDs compartidos (C1, C2, ...) a los vértices de corte
+    let cutPtCounter = 1;
+    const cutPoints = [];
+    const registerCutPoint = (pt, cutIdx) => {
+      const existing = cutPoints.find(cp => Math.hypot(cp.e - pt.e, cp.n - pt.n) < 1e-3);
+      if (existing) return existing;
+      const newPt = {
+        id: `C${cutPtCounter++}`,
+        e: pt.e,
+        n: pt.n,
+        z: Number(pt.z) || 0,
+        desc: `CORTE ${cutIdx}`
+      };
+      cutPoints.push(newPt);
+      return newPt;
+    };
 
-    // Extraer líneas de corte exactas (intersección de s = sCut con los bordes del polígono)
     const cutLines = sCuts.map((sCut, idx) => {
       const hits = [];
       for (let i = 0; i < points.length; i++) {
@@ -764,8 +752,10 @@
         }
       }
       hits.sort((a, b) => a.u - b.u);
-      const from = hits[0] || null;
-      const to = hits[hits.length - 1] || null;
+      const rawFrom = hits[0] || null;
+      const rawTo = hits[hits.length - 1] || null;
+      const from = rawFrom ? registerCutPoint(rawFrom, idx + 1) : null;
+      const to = rawTo ? registerCutPoint(rawTo, idx + 1) : null;
       const inv = (from && to) ? inverse(from, to) : null;
       return {
         index: idx + 1,
@@ -777,6 +767,35 @@
       };
     }).filter(cl => cl.from && cl.to);
 
+    // Construir cada lote usando los IDs compartidos (P1..Pn y C1..Ck) y calcular sus datos de campo completos
+    const lots = [];
+    for (let j = 0; j < N; j++) {
+      let poly = points.map(p => ({ ...p }));
+      if (j > 0) {
+        poly = clipPolygonHalfPlane(poly, sCuts[j - 1], false, e0, n0, vx, vy);
+      }
+      if (j < N - 1) {
+        poly = clipPolygonHalfPlane(poly, sCuts[j], true, e0, n0, vx, vy);
+      }
+      poly = poly.map(p => {
+        if (p.id) return p;
+        const match = cutPoints.find(cp => Math.hypot(cp.e - p.e, cp.n - p.n) < 1e-2);
+        return match ? { ...p, id: match.id, desc: match.desc } : { ...p, id: `C${cutPtCounter++}`, desc: 'CORTE' };
+      });
+      const m = polygonMetrics(poly, true);
+      lots.push({
+        index: j + 1,
+        name: `Lote ${j + 1}`,
+        points: poly,
+        legs: m.legs,
+        areaM2: m.areaM2,
+        areaHa: m.areaHa,
+        areaVaras2: m.areaVaras2,
+        perimeter: m.perimeter,
+        centroid: m.centroid
+      });
+    }
+
     return {
       ok: true,
       numLots: N,
@@ -784,7 +803,8 @@
       targetAreaM2: baseMetrics.areaM2 / N,
       cutAzimuth: az,
       lots,
-      cutLines
+      cutLines,
+      cutPoints
     };
   }
 

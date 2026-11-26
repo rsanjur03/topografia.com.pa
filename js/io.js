@@ -151,29 +151,42 @@
     return lines.join('\r\n');
   }
 
-  /** Exporta Cuadro de Datos de Campo a TSV (para pegar en Excel / Word / Civil 3D) */
-  function fieldTableToTSV(points, closed) {
-    const metrics = global.TopoCOGO.polygonMetrics(points, closed);
-    const lines = ['EST\tP.V.\tRUMBO\tAZIMUT\tDISTANCIA (m)\tNORTE (Y)\tESTE (X)\tCOTA (Z)'];
-    for (const leg of metrics.legs) {
-      lines.push([
-        leg.fromId,
-        leg.toId,
-        leg.bearing,
-        leg.azimuthText,
-        leg.dist.toFixed(3),
-        leg.from.n.toFixed(3),
-        leg.from.e.toFixed(3),
-        (Number(leg.from.z) || 0).toFixed(2)
-      ].join('\t'));
-    }
-    if (!closed && points.length > 0) {
-      const last = points[points.length - 1];
-      lines.push([last.id, '-', '-', '-', '-', last.n.toFixed(3), last.e.toFixed(3), (Number(last.z) || 0).toFixed(2)].join('\t'));
-    }
-    if (closed) {
-      lines.push('');
-      lines.push(`AREA (m2)\t${metrics.areaM2.toFixed(2)}\tAREA (ha)\t${metrics.areaHa.toFixed(4)}\tPERIMETRO (m)\t${metrics.perimeter.toFixed(3)}`);
+  /** Exporta Cuadro de Datos de Campo a TSV (Polígono completo + cada lote si existe división) */
+  function fieldTableToTSV(points, closed, lotDivision = null) {
+    const appendTable = (lines, title, pts, isClosed) => {
+      const metrics = global.TopoCOGO.polygonMetrics(pts, isClosed);
+      if (title) lines.push(title);
+      lines.push('EST\tP.V.\tRUMBO\tAZIMUT\tDISTANCIA (m)\tNORTE (Y)\tESTE (X)\tCOTA (Z)');
+      for (const leg of metrics.legs) {
+        lines.push([
+          leg.fromId,
+          leg.toId,
+          leg.bearing,
+          leg.azimuthText,
+          leg.dist.toFixed(3),
+          leg.from.n.toFixed(3),
+          leg.from.e.toFixed(3),
+          (Number(leg.from.z) || 0).toFixed(2)
+        ].join('\t'));
+      }
+      if (!isClosed && pts.length > 0) {
+        const last = pts[pts.length - 1];
+        lines.push([last.id, '-', '-', '-', '-', last.n.toFixed(3), last.e.toFixed(3), (Number(last.z) || 0).toFixed(2)].join('\t'));
+      }
+      if (isClosed) {
+        lines.push(`AREA (m2)\t${metrics.areaM2.toFixed(2)}\tAREA (ha)\t${metrics.areaHa.toFixed(4)}\tPERIMETRO (m)\t${metrics.perimeter.toFixed(3)}`);
+      }
+    };
+
+    const lines = [];
+    const hasLots = Boolean(lotDivision && lotDivision.ok && lotDivision.lots && lotDivision.lots.length > 0);
+    appendTable(lines, hasLots ? '=== CUADRO DE DATOS DE CAMPO: POLIGONO COMPLETO ===' : '', points, closed);
+
+    if (hasLots) {
+      for (const lot of lotDivision.lots) {
+        lines.push('');
+        appendTable(lines, `=== CUADRO DE DATOS DE CAMPO: ${lot.name.toUpperCase()} ===`, lot.points, true);
+      }
     }
     return lines.join('\r\n');
   }

@@ -166,11 +166,14 @@
     const baseTextH = Math.max(0.25, maxSpan * 0.018) * (Number(options.textScale) || 1.0);
     const markerR = baseTextH * 0.45;
 
-    // Extensión total considerando cuadro de datos a la derecha
+    // Extensión total considerando cuadro de datos (y cuadros de lotes) a la derecha
     const tableMargin = maxSpan * 0.14 + baseTextH * 4;
     const tableWidth = baseTextH * 68;
+    const extraLotRows = (options.includeTable && state.lotDivision && state.lotDivision.ok)
+      ? state.lotDivision.lots.reduce((sum, l) => sum + (l.legs ? l.legs.length : 4) + 6, 0)
+      : 0;
     const extMinE = minE - maxSpan * 0.12;
-    const extMinN = minN - maxSpan * 0.12;
+    const extMinN = Math.min(minN - maxSpan * 0.12, maxN - (metrics.legs.length + 8 + extraLotRows) * baseTextH * 1.9);
     const extMaxE = options.includeTable ? (maxE + tableMargin + tableWidth + maxSpan * 0.08) : (maxE + maxSpan * 0.12);
     const extMaxN = maxN + maxSpan * 0.15;
 
@@ -379,14 +382,22 @@
       }
     }
 
-    // 5b. División en Lotes (líneas de corte + etiquetas de lote)
+    // 5b. División en Lotes (líneas de corte, vértices de corte C1..Ck y etiquetas de lote)
     if (state.lotDivision && state.lotDivision.ok) {
+      for (const cp of state.lotDivision.cutPoints || []) {
+        dxf.addPoint('TOPO_LOTES', cp.e, cp.n, cp.z || 0);
+        dxf.addCircle('TOPO_LOTES', cp.e, cp.n, markerR * 0.85, cp.z || 0);
+        dxf.addText('TOPO_LOTES', cp.id, cp.e + markerR * 1.4, cp.n + markerR * 1.2, baseTextH * 0.8, 0, 0, 0);
+      }
       for (const cl of state.lotDivision.cutLines || []) {
         if (cl.from && cl.to) {
           dxf.addLine('TOPO_LOTES', cl.from.e, cl.from.n, cl.to.e, cl.to.n);
           const mx = (cl.from.e + cl.to.e) / 2;
           const my = (cl.from.n + cl.to.n) / 2;
-          dxf.addText('TOPO_LOTES', `${cl.bearing} (${cl.dist.toFixed(2)}m)`, mx, my, baseTextH * 0.65, 0, 1, 2);
+          let cadAngle = Math.atan2(cl.to.n - cl.from.n, cl.to.e - cl.from.e) * (180 / Math.PI);
+          if (cadAngle > 90) cadAngle -= 180;
+          if (cadAngle < -90) cadAngle += 180;
+          dxf.addText('TOPO_LOTES', `${cl.bearing} (${cl.dist.toFixed(2)}m)`, mx, my, baseTextH * 0.65, cadAngle, 1, 2);
         }
       }
       for (const lot of state.lotDivision.lots || []) {
@@ -418,19 +429,43 @@
       dxf.addText('TOPO_NORTE', 'N', nx, ny + r * 1.75, baseTextH * 1.1, 0, 1, 2);
     }
 
-    // 8. CUADRO DE DATOS DE CAMPO / CUADRO DE CONSTRUCCIÓN (Vectorial)
+    // 8. CUADRO DE DATOS DE CAMPO (Polígono completo + Cuadro individual de cada lote si hay división)
     if (options.includeTable) {
-      drawFieldDataTable(dxf, {
+      const hasLots = Boolean(state.lotDivision && state.lotDivision.ok && state.lotDivision.lots && state.lotDivision.lots.length > 0);
+      const baseTitle = hasLots
+        ? `${state.projectName || 'LEVANTAMIENTO'} - POLIGONO COMPLETO`
+        : (state.projectName || 'LEVANTAMIENTO TOPOGRAFICO');
+
+      let cursorY = drawFieldDataTable(dxf, {
         originX: maxE + tableMargin,
         originY: maxN,
         textH: baseTextH * 0.78,
-        projectName: state.projectName || 'LEVANTAMIENTO TOPOGRAFICO',
+        projectName: baseTitle,
         crsLabel: state.crsLabel || 'UTM WGS84 ZONA 17N (PANAMA)',
         points,
         metrics,
         closed,
         closureInfo: state.closureInfo || null
       });
+
+      if (hasLots) {
+        const tableGap = baseTextH * 4.5;
+        for (const lot of state.lotDivision.lots) {
+          cursorY -= tableGap;
+          const lotMetrics = C.polygonMetrics(lot.points, true);
+          cursorY = drawFieldDataTable(dxf, {
+            originX: maxE + tableMargin,
+            originY: cursorY,
+            textH: baseTextH * 0.78,
+            projectName: `${state.projectName || 'FINCA'} - ${lot.name.toUpperCase()}`,
+            crsLabel: state.crsLabel || 'UTM WGS84 ZONA 17N (PANAMA)',
+            points: lot.points,
+            metrics: lotMetrics,
+            closed: true,
+            closureInfo: null
+          });
+        }
+      }
     }
 
     dxf.pair(0, 'ENDSEC');
@@ -607,7 +642,10 @@
         th * 0.82,
         0, 1, 2
       );
+      y -= rowH;
     }
+
+    return y;
   }
 
   function getNiceGridStep(span) {

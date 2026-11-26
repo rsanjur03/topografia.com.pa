@@ -161,7 +161,16 @@
     const closed = state.closed && state.points.length >= 3;
     const metrics = C.polygonMetrics(state.points, closed);
 
-    // 1. Cuadro de Datos de Campo
+    // 1. Cuadro de Datos de Campo (Polígono completo + Cuadros de cada Lote si hay división)
+    const hasLots = Boolean(state.lotDivision && state.lotDivision.ok && state.lotDivision.lots && state.lotDivision.lots.length > 0);
+    const mainHead = $('mainPolyTableHead');
+    if (mainHead) {
+      mainHead.classList.toggle('hidden', !hasLots);
+      if (hasLots) {
+        $('mainPolyTableArea').textContent = `${metrics.areaM2.toFixed(2)} m² · Perím: ${metrics.perimeter.toFixed(2)} m`;
+      }
+    }
+
     const fieldBody = $('fieldTableBody');
     fieldBody.innerHTML = '';
     if (metrics.legs.length === 0) {
@@ -184,6 +193,68 @@
         const tr = document.createElement('tr');
         tr.innerHTML = `<td><strong>${last.id}</strong></td><td>-</td><td>FIN</td><td>-</td><td>${last.n.toFixed(3)}</td><td>${last.e.toFixed(3)}</td>`;
         fieldBody.appendChild(tr);
+      }
+    }
+
+    // Cuadros de Datos de Campo individuales de cada Lote
+    const lotContainer = $('lotTablesContainer');
+    if (lotContainer) {
+      lotContainer.innerHTML = '';
+      if (hasLots) {
+        state.lotDivision.lots.forEach((lot, idx) => {
+          const legs = lot.legs || C.polygonMetrics(lot.points, true).legs;
+          const block = document.createElement('div');
+          block.className = 'lot-table-block';
+          const rowsHtml = legs.map(leg => `
+            <tr>
+              <td><strong>${leg.fromId}</strong></td>
+              <td>${leg.toId}</td>
+              <td>${leg.bearing}</td>
+              <td>${leg.dist.toFixed(3)}</td>
+              <td>${leg.from.n.toFixed(3)}</td>
+              <td>${leg.from.e.toFixed(3)}</td>
+            </tr>
+          `).join('');
+          block.innerHTML = `
+            <div class="lot-table-head lot-head-amber">
+              <span>${lot.name} (Datos de Campo)</span>
+              <button type="button" class="chip-btn" data-copy-lot="${idx}" title="Copiar cuadro de ${lot.name}">📋 Copiar</button>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Est.</th>
+                  <th>P.V.</th>
+                  <th>Rumbo</th>
+                  <th>Dist (m)</th>
+                  <th>Norte (Y)</th>
+                  <th>Este (X)</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+            <div class="lot-table-foot">
+              <span>Área: ${lot.areaM2.toFixed(2)} m² (${lot.areaHa.toFixed(4)} ha)</span>
+              <span>Perím: ${lot.perimeter.toFixed(3)} m</span>
+            </div>
+          `;
+          lotContainer.appendChild(block);
+        });
+
+        lotContainer.querySelectorAll('[data-copy-lot]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const lot = state.lotDivision.lots[Number(btn.dataset.copyLot)];
+            if (!lot) return;
+            const tsv = IO.fieldTableToTSV(lot.points, true, null);
+            try {
+              await navigator.clipboard.writeText(`${lot.name.toUpperCase()}\r\n${tsv}`);
+              showToast(`Cuadro de ${lot.name} copiado para Excel`);
+            } catch {
+              IO.downloadFile(`${state.projectName}_${lot.name.replace(/\s+/g, '_')}.tsv`, tsv, 'text/tab-separated-values');
+              showToast(`Cuadro de ${lot.name} descargado`);
+            }
+          });
+        });
       }
     }
 
@@ -1116,10 +1187,13 @@
 
     $('btnCopyTable').addEventListener('click', async () => {
       if (state.points.length === 0) return showToast('No hay datos para copiar');
-      const tsv = IO.fieldTableToTSV(state.points, state.closed && state.points.length >= 3);
+      const hasLots = Boolean(state.lotDivision && state.lotDivision.ok);
+      const tsv = IO.fieldTableToTSV(state.points, state.closed && state.points.length >= 3, state.lotDivision);
       try {
         await navigator.clipboard.writeText(tsv);
-        showToast('Cuadro de datos copiado (listo para pegar en Excel)');
+        showToast(hasLots
+          ? `Cuadro del polígono completo + ${state.lotDivision.lots.length} lotes copiados para Excel`
+          : 'Cuadro de datos copiado (listo para pegar en Excel)');
       } catch {
         IO.downloadFile(`${state.projectName}_cuadro.tsv`, tsv, 'text/tab-separated-values');
         showToast('Cuadro descargado en formato TSV');
@@ -1240,7 +1314,8 @@
       const cleanName = (state.projectName || 'levantamiento').replace(/[^a-zA-Z0-9_-]/g, '_');
       $('dxfFilename').value = `${cleanName}.dxf`;
       const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
-      $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${metrics.legs.length} lados · Área: ${metrics.areaM2.toFixed(2)} m²`;
+      const lotNote = (state.lotDivision && state.lotDivision.ok) ? ` + ${state.lotDivision.lots.length} cuadros de lotes` : '';
+      $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${metrics.legs.length} lados · Área: ${metrics.areaM2.toFixed(2)} m²${lotNote}`;
       dxfDialog.showModal();
     });
 

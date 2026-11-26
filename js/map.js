@@ -498,6 +498,26 @@
             }).addTo(this.auxGroup);
           }
         });
+        (lotDivision.cutPoints || []).forEach((cp) => {
+          const ll = this._ptToLatLng(cp);
+          if (!ll) return;
+          L.circleMarker(ll, {
+            radius: 4.8,
+            color: '#1c1917',
+            weight: 1.8,
+            fillColor: '#fbbf24',
+            fillOpacity: 1
+          }).addTo(this.auxGroup);
+          if (this.showLabels) {
+            const cpIcon = L.divIcon({
+              className: 'map-pt-label',
+              html: `<span class="pt-tag pt-tag-cut">${cp.id}</span>`,
+              iconSize: [0, 0],
+              iconAnchor: [-8, 11]
+            });
+            L.marker(ll, { icon: cpIcon, interactive: false }).addTo(this.labelGroup);
+          }
+        });
       }
 
       // Líneas auxiliares COGO
