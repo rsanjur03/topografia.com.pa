@@ -501,14 +501,15 @@
     });
 
     // Basemap Switcher
-    document.querySelectorAll('.bm-btn').forEach(btn => {
+    document.querySelectorAll('.bm-btn[data-bm]').forEach(btn => {
       btn.addEventListener('click', () => {
         const bm = btn.dataset.bm;
+        if (!bm) return;
         if (state.crsMode === 'local' && bm !== 'cad') {
           showToast('En Sistema Local solo se usa Plano CAD. Cambia a UTM 17N/18N para ver Satelital o StreetMap.');
           return;
         }
-        document.querySelectorAll('.bm-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.bm-btn[data-bm]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         mapEngine.setBasemap(bm);
       });
@@ -1683,6 +1684,8 @@
       const container = $('ignSheetsList');
       if (!container || !IGN) return;
       const allSheets = IGN.getSheets();
+      const countEl = $('ignSheetsCount');
+      if (countEl) countEl.textContent = String(allSheets.length);
       container.innerHTML = '';
 
       allSheets.forEach((s) => {
@@ -1788,6 +1791,45 @@
       $('btnIgnQuickHide').addEventListener('click', () => {
         IGN.getSheets().forEach(s => IGN.setSheetEnabled(s.id, false));
         syncIgnMapOverlay();
+        renderIgnSheetsList();
+      });
+
+      const computeMosaicBounds = (list) => {
+        if (!list || list.length === 0) return null;
+        return {
+          south: Math.min(...list.map(s => s.bounds.south)),
+          north: Math.max(...list.map(s => s.bounds.north)),
+          west: Math.min(...list.map(s => s.bounds.west)),
+          east: Math.max(...list.map(s => s.bounds.east))
+        };
+      };
+
+      $('btnIgnEnableAll').addEventListener('click', () => {
+        const all = IGN.getSheets();
+        all.forEach(s => IGN.setSheetEnabled(s.id, true));
+        syncIgnMapOverlay();
+        renderIgnSheetsList();
+        showToast(`${all.length} hojas IGN activadas en el mosaico`);
+      });
+
+      $('btnIgnDisableAll').addEventListener('click', () => {
+        IGN.getSheets().forEach(s => IGN.setSheetEnabled(s.id, false));
+        syncIgnMapOverlay();
+        renderIgnSheetsList();
+        showToast('Capas IGN ocultadas');
+      });
+
+      $('btnIgnFitAll').addEventListener('click', () => {
+        let active = IGN.getEnabledSheets();
+        if (active.length === 0) {
+          IGN.getSheets().forEach(s => IGN.setSheetEnabled(s.id, true));
+          active = IGN.getEnabledSheets();
+          syncIgnMapOverlay();
+          renderIgnSheetsList();
+        }
+        const mb = computeMosaicBounds(active);
+        if (mb) mapEngine.fitLatLngBounds(mb);
+        ignDialog.close();
       });
 
       $('btnIgnAddSheet').addEventListener('click', async () => {

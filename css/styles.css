@@ -638,11 +638,12 @@ html, body {
 .floating-ign-bar input[type="range"] { width: 92px; accent-color: #f59e0b; }
 
 .ign-sheets-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
   gap: 6px;
-  max-height: 185px;
+  max-height: 235px;
   overflow-y: auto;
+  padding-right: 4px;
 }
 
 .ign-sheet-item {
