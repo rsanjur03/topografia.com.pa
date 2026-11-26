@@ -110,9 +110,16 @@
         cad: []
       };
 
+      // Pane dedicado para Hojas IGN: encima de tiles (200) y DEBAJO de polígonos/vértices (400)
+      this.map.createPane('ignPane');
+      this.map.getPane('ignPane').style.zIndex = '350';
+      this.map.getPane('ignPane').style.pointerEvents = 'none';
+
       this.overlayGroup = L.layerGroup().addTo(this.map);
+      this.ignGroup = L.layerGroup().addTo(this.map);
       this.auxGroup = L.layerGroup().addTo(this.map);
       this.labelGroup = L.layerGroup().addTo(this.map);
+      this.ignOverlays = [];
 
       this.setBasemap(this.basemap);
 
@@ -375,6 +382,35 @@
     setEditMode(enabled) {
       this.editMode = Boolean(enabled);
       this.render(this.lastData);
+    }
+
+    /** Renderiza hojas georreferenciadas IGN Tommy Guardia como capas ImageOverlay con transparencia */
+    setIgnSheets(sheets = [], opacity = 0.85) {
+      if (!this.map || !this.ignGroup || !this.leafletAvailable) return;
+      const L = global.L;
+      this.ignGroup.clearLayers();
+      this.ignOverlays = [];
+      for (const s of sheets) {
+        if (!s.enabled || !s.bounds || !s.url) continue;
+        const b = s.bounds;
+        const ov = L.imageOverlay(s.url, [[b.south, b.west], [b.north, b.east]], {
+          opacity,
+          interactive: false,
+          pane: 'ignPane'
+        }).addTo(this.ignGroup);
+        this.ignOverlays.push(ov);
+      }
+    }
+
+    setIgnOpacity(opacity) {
+      for (const ov of (this.ignOverlays || [])) {
+        ov.setOpacity(opacity);
+      }
+    }
+
+    fitLatLngBounds(bounds) {
+      if (!this.map || !this.leafletAvailable || !bounds) return;
+      this.map.fitBounds([[bounds.south, bounds.west], [bounds.north, bounds.east]], { padding: [30, 30] });
     }
 
     setLabelsVisible(visible) {

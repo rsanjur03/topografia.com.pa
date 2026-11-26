@@ -734,13 +734,23 @@
         <div id="leafletMap" class="map-layer"></div>
         <canvas id="cadCanvas" class="cad-layer"></canvas>
 
-        <!-- Selector flotante de Basemap -->
+        <!-- Selector flotante de Basemap + Capa Hojas IGN -->
         <div class="floating-basemap" role="group" aria-label="Mapa base">
           <button class="bm-btn active" data-bm="satellite" data-i18n="bmSat" title="Imagen Satelital (Esri World Imagery)">Satelital</button>
           <button class="bm-btn" data-bm="hybrid" data-i18n="bmHybrid" title="Satelital con etiquetas de calles y lugares">Híbrido</button>
           <button class="bm-btn" data-bm="osm" data-i18n="bmStreet" title="Mapa de Calles (Esri World Street Map)">StreetMap</button>
           <button class="bm-btn" data-bm="topo" data-i18n="bmTopo" title="Mapa Topográfico con curvas de nivel">Topo</button>
           <button class="bm-btn" data-bm="cad" data-i18n="bmCad" title="Plano CAD con cuadrícula de coordenadas">Plano CAD</button>
+          <span class="bm-sep"></span>
+          <button id="btnOpenIgnModal" class="bm-btn bm-ign-btn" title="Activar o subir Hojas Cartográficas IGN Tommy Guardia (1:25,000)">🗺️ Hojas IGN</button>
+        </div>
+
+        <!-- Barra flotante de opacidad cuando hay Hojas IGN activas -->
+        <div id="ignOpacityBar" class="floating-ign-bar hidden">
+          <span>IGN:</span>
+          <input id="ignQuickOpacity" type="range" min="15" max="100" step="5" value="85" />
+          <span id="ignQuickOpacityVal">85%</span>
+          <button id="btnIgnQuickHide" type="button" class="chip-btn" title="Ocultar capas IGN">Ocultar</button>
         </div>
 
         <!-- Herramientas flotantes del visor -->
@@ -1773,8 +1783,8 @@
         <div class="form-section-title mt-sm" data-i18n="secAnatiNotes">Notas Técnicas y Hoja Cartográfica</div>
         <div class="grid-3 mt-xs">
           <label class="field">
-            <span>Hoja IGN (1:50,000)</span>
-            <input id="anatiHojaIgn" type="text" value="3642 II NE" />
+            <span>Hoja IGN (1:50,000 / 1:25,000)</span>
+            <input id="anatiHojaIgn" type="text" value="3741 III NW" />
           </label>
           <label class="field">
             <span>Equipo Utilizado</span>
@@ -1848,6 +1858,91 @@
     </div>
   </dialog>
 
+  <!-- ==================== MODAL GESTOR DE HOJAS IGN / MOSAICOS ==================== -->
+  <dialog id="ignDialog" class="modal modal-wide">
+    <div class="modal-head">
+      <h2>🗺️ Mosaico de Hojas Cartográficas IGN (Panamá / Chiriquí)</h2>
+      <button class="icon-btn modal-close" data-close="ignDialog" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-note">
+        Activa hojas georreferenciadas del <strong>IGN Tommy Guardia (1:25,000 WGS84)</strong> encima del mapa satelital o sube nuevas hojas de Chiriquí/Panamá (<strong>PDF oficial o JPG/PNG</strong>). Al exportar tu <strong>Plano ANATI en PDF</strong>, el cuadro de <em>Localización Regional</em> recortará automáticamente la hoja que cubra tu lote.
+      </p>
+
+      <!-- Lista de hojas cargadas -->
+      <div class="form-section-title mt-sm">1. Hojas Cargadas en el Mosaico</div>
+      <div id="ignSheetsList" class="ign-sheets-list mt-xs"></div>
+
+      <div class="row-actions mt-xs" style="justify-content:space-between;">
+        <label class="field" style="flex:1;max-width:280px;">
+          <span>Opacidad del mosaico (<span id="ignModalOpacityVal">85%</span>)</span>
+          <input id="ignModalOpacity" type="range" min="15" max="100" step="5" value="85" />
+        </label>
+        <span id="ignStatusNote" class="muted-meta"></span>
+      </div>
+
+      <!-- Formulario para subir nuevas hojas IGN -->
+      <div class="form-section-title mt-sm">2. Subir Nueva Hoja IGN o Mosaico (PDF / JPG / PNG)</div>
+      <div class="grid-2 mt-xs">
+        <label class="field">
+          <span>Cuadrante IGN Chiriquí (auto-llena esquinas exactas)</span>
+          <select id="ignQuadrantSelect">
+            <option value="custom">Personalizado (ingresar 4 esquinas Lat/Lon)</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Archivo de la Hoja (.PDF oficial IGN o .JPG/.PNG)</span>
+          <input id="ignUploadFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" />
+        </label>
+      </div>
+
+      <div class="grid-3 mt-xs">
+        <label class="field">
+          <span>Código de Hoja</span>
+          <input id="ignNewCode" type="text" placeholder="Ej. 3741 IV SW" />
+        </label>
+        <label class="field">
+          <span>Nombre / Zona</span>
+          <input id="ignNewName" type="text" placeholder="Ej. Dolega / Boquete" />
+        </label>
+        <label class="field" style="justify-content:flex-end;">
+          <label class="switch-inline" style="margin-top:16px;">
+            <input id="ignAutoCropPdf" type="checkbox" checked />
+            <span>Auto-recortar marco IGN 1:25k (PDF)</span>
+          </label>
+        </label>
+      </div>
+
+      <div class="grid-4 mt-xs">
+        <label class="field">
+          <span>Sur (Lat mín °)</span>
+          <input id="ignSouth" type="number" step="0.000001" placeholder="8.500000" />
+        </label>
+        <label class="field">
+          <span>Norte (Lat máx °)</span>
+          <input id="ignNorth" type="number" step="0.000001" placeholder="8.583333" />
+        </label>
+        <label class="field">
+          <span>Oeste (Lon mín °)</span>
+          <input id="ignWest" type="number" step="0.000001" placeholder="-82.500000" />
+        </label>
+        <label class="field">
+          <span>Este (Lon máx °)</span>
+          <input id="ignEast" type="number" step="0.000001" placeholder="-82.375000" />
+        </label>
+      </div>
+
+      <div class="row-actions mt-sm">
+        <button id="btnIgnAddSheet" type="button" class="btn btn-primary">Georreferenciar y Agregar al Mosaico</button>
+        <span id="ignUploadStatus" class="muted-meta"></span>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted-meta">Las hojas que subas se guardan localmente en tu navegador (IndexedDB).</span>
+      <button class="btn btn-ghost" data-close="ignDialog">Cerrar</button>
+    </div>
+  </dialog>
+
   <!-- Toast de notificaciones -->
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
@@ -1855,6 +1950,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="js/geodesy.js"></script>
   <script src="js/cogo.js"></script>
+  <script src="js/ign.js"></script>
   <script src="js/dxf.js"></script>
   <script src="js/pdf.js"></script>
   <script src="js/io.js"></script>

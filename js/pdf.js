@@ -149,37 +149,94 @@
     buildStream() {
       return this.ops.join('\n') + '\n';
     }
+
+    /** Dibuja un XObject de imagen JPEG (ej. '/Im1') en mm dentro de la lámina */
+    drawImage(imgName, xMm, yMm, wMm, hMm) {
+      this.ops.push(`q ${f(this._s(wMm))} 0 0 ${f(this._s(hMm))} ${f(this._x(xMm))} ${f(this._y(yMm))} cm /${imgName} Do Q`);
+    }
   }
 
-  /** Empaqueta un stream vectorial en un archivo PDF 1.4 válido con tabla xref exacta */
-  function buildPdfDocument(pageWidthPt, pageHeightPt, streamContent) {
-    const objs = [];
-    objs.push('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
-    objs.push('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
-    objs.push(
-      `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(pageWidthPt)} ${f(pageHeightPt)}] ` +
-      `/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >> >> /Contents 7 0 R >>\nendobj\n`
-    );
-    objs.push('4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n');
-    objs.push('5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n');
-    objs.push('6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n');
-    objs.push(`7 0 obj\n<< /Length ${streamContent.length} >>\nstream\n${streamContent}endstream\nendobj\n`);
+  function strToBytes(str) {
+    const arr = new Uint8Array(str.length);
+    for (let i = 0; i < str.length; i++) arr[i] = str.charCodeAt(i) & 0xff;
+    return arr;
+  }
 
-    let pdf = '%PDF-1.4\n';
+  /** Empaqueta un stream vectorial (+ imagen JPEG opcional) en un Uint8Array PDF 1.4 con xref 100% exacto */
+  function buildPdfDocument(pageWidthPt, pageHeightPt, streamContent, jpegImg = null) {
+    const chunks = [];
+    let byteOffset = 0;
     const offsets = [0];
-    for (const obj of objs) {
-      offsets.push(pdf.length);
-      pdf += obj;
+
+    const pushBytes = (u8) => {
+      chunks.push(u8);
+      byteOffset += u8.length;
+    };
+    const pushStr = (s) => pushBytes(strToBytes(s));
+
+    const startObj = (id) => {
+      offsets[id] = byteOffset;
+      pushStr(`${id} 0 obj\n`);
+    };
+
+    pushStr('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+
+    const hasImg = Boolean(jpegImg && jpegImg.jpegBytes && jpegImg.jpegBytes.length > 0);
+    const xobjRes = hasImg ? ' /XObject << /Im1 8 0 R >>' : '';
+
+    startObj(1);
+    pushStr('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+
+    startObj(2);
+    pushStr('<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n');
+
+    startObj(3);
+    pushStr(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(pageWidthPt)} ${f(pageHeightPt)}] ` +
+      `/Resources << /Font << /F1 4 0 R /F2 5 0 R /F3 6 0 R >>${xobjRes} >> /Contents 7 0 R >>\nendobj\n`
+    );
+
+    startObj(4);
+    pushStr('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n');
+
+    startObj(5);
+    pushStr('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n');
+
+    startObj(6);
+    pushStr('<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>\nendobj\n');
+
+    const streamBytes = strToBytes(streamContent);
+    startObj(7);
+    pushStr(`<< /Length ${streamBytes.length} >>\nstream\n`);
+    pushBytes(streamBytes);
+    pushStr('endstream\nendobj\n');
+
+    const totalObjs = hasImg ? 8 : 7;
+    if (hasImg) {
+      startObj(8);
+      pushStr(
+        `<< /Type /XObject /Subtype /Image /Width ${jpegImg.width} /Height ${jpegImg.height} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegImg.jpegBytes.length} >>\nstream\n`
+      );
+      pushBytes(jpegImg.jpegBytes);
+      pushStr('\nendstream\nendobj\n');
     }
 
-    const xrefOffset = pdf.length;
-    pdf += `xref\n0 ${objs.length + 1}\n`;
-    pdf += '0000000000 65535 f \n';
-    for (let i = 1; i < offsets.length; i++) {
-      pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+    const xrefOffset = byteOffset;
+    pushStr(`xref\n0 ${totalObjs + 1}\n`);
+    pushStr('0000000000 65535 f \n');
+    for (let i = 1; i <= totalObjs; i++) {
+      pushStr(String(offsets[i]).padStart(10, '0') + ' 00000 n \n');
     }
-    pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-    return pdf;
+    pushStr(`trailer\n<< /Size ${totalObjs + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+
+    const out = new Uint8Array(byteOffset);
+    let pos = 0;
+    for (const c of chunks) {
+      out.set(c, pos);
+      pos += c.length;
+    }
+    return out;
   }
 
   /**
@@ -399,28 +456,38 @@
     }
 
     // 6. CUADROS LATERALES IZQUIERDOS: LOCALIZACION REGIONAL + NORTE + DETALLE DE AMARRE
-    // 6a. Localización Regional
-    cv.setFill(0.97, 0.98, 0.99);
-    cv.rect(15, 350, 115, 104, 'f');
-    cv.setStroke(0.12, 0.15, 0.2, 0.35);
-    cv.rect(15, 350, 115, 104, 'S');
-    cv.setStroke(0.7, 0.75, 0.82, 0.15);
-    cv.line(15, 402, 130, 402);
-    cv.line(72.5, 350, 72.5, 454);
-    cv.setFill(0.85, 0.15, 0.15);
-    cv.circle(72.5, 402, 2.2, 'f');
-    cv.setStroke(0.1, 0.1, 0.1, 0.25);
-    cv.line(72.5, 402, 79, 410);
-    cv.setFill(1, 1, 1);
-    cv.rect(79, 409, 34, 8, 'f');
-    cv.rect(79, 409, 34, 8, 'S');
-    cv.text('GLOBO MEDIDO', 96, 413, 2.1, { font: 'F2', align: 'center' });
-
+    // 6a. Localización Regional (incrusta recorte real de la Hoja IGN si existe cobertura!)
+    const regCrop = opts.regionalCrop || null;
+    const hojaCode = (regCrop && regCrop.sheetCode) ? regCrop.sheetCode : (a.hojaIgn || 'IGN PANAMA');
     const cE = (minE + maxE) / 2, cN = (minN + maxN) / 2;
-    cv.text(`E: ${cE.toFixed(0)}`, 72.5, 354, 2.0, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
-    cv.text(`N: ${cN.toFixed(0)}`, 128, 405, 2.0, { font: 'F3', align: 'right', color: [0.3, 0.35, 0.42] });
-    cv.text(`LOCALIZACION REGIONAL - HOJA ${(a.hojaIgn || 'IGN PANAMA').toUpperCase()}`, 72.5, 344, 2.6, { font: 'F2', align: 'center' });
-    cv.text('ESCALA 1:40,000', 72.5, 339.5, 2.3, { font: 'F1', align: 'center' });
+
+    if (regCrop && regCrop.jpegBytes) {
+      cv.drawImage('Im1', 15, 350, 115, 104);
+      cv.setStroke(0.1, 0.12, 0.16, 0.45);
+      cv.rect(15, 350, 115, 104, 'S');
+      cv.text(`LOCALIZACION REGIONAL - HOJA ${hojaCode.toUpperCase()}`, 72.5, 344, 2.6, { font: 'F2', align: 'center' });
+      cv.text('HOJA IGN 1:25,000 (RECORTE GEORREFERENCIADO)', 72.5, 339.5, 2.1, { font: 'F1', align: 'center' });
+    } else {
+      cv.setFill(0.97, 0.98, 0.99);
+      cv.rect(15, 350, 115, 104, 'f');
+      cv.setStroke(0.12, 0.15, 0.2, 0.35);
+      cv.rect(15, 350, 115, 104, 'S');
+      cv.setStroke(0.7, 0.75, 0.82, 0.15);
+      cv.line(15, 402, 130, 402);
+      cv.line(72.5, 350, 72.5, 454);
+      cv.setFill(0.85, 0.15, 0.15);
+      cv.circle(72.5, 402, 2.2, 'f');
+      cv.setStroke(0.1, 0.1, 0.1, 0.25);
+      cv.line(72.5, 402, 79, 410);
+      cv.setFill(1, 1, 1);
+      cv.rect(79, 409, 34, 8, 'f');
+      cv.rect(79, 409, 34, 8, 'S');
+      cv.text('GLOBO MEDIDO', 96, 413, 2.1, { font: 'F2', align: 'center' });
+      cv.text(`E: ${cE.toFixed(0)}`, 72.5, 354, 2.0, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
+      cv.text(`N: ${cN.toFixed(0)}`, 128, 405, 2.0, { font: 'F3', align: 'right', color: [0.3, 0.35, 0.42] });
+      cv.text(`LOCALIZACION REGIONAL - HOJA ${hojaCode.toUpperCase()}`, 72.5, 344, 2.6, { font: 'F2', align: 'center' });
+      cv.text('ESCALA 1:40,000', 72.5, 339.5, 2.3, { font: 'F1', align: 'center' });
+    }
 
     // 6b. Flecha Norte de Cuadrícula
     drawNorthArrowPdf(cv, 160, 395, 16);
@@ -550,7 +617,7 @@
     cv.text('Generado con topografia.com.pa', 12, 6, 1.8, { font: 'F1', color: [0.45, 0.5, 0.58] });
 
     const stream = cv.buildStream();
-    return buildPdfDocument(pageWmm * MM2PT, pageHmm * MM2PT, stream);
+    return buildPdfDocument(pageWmm * MM2PT, pageHmm * MM2PT, stream, regCrop);
   }
 
   function drawAnatiTablePdf(cv, cfg) {

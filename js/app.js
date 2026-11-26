@@ -1626,20 +1626,220 @@
       }
     });
 
-    $('btnDownloadPdf').addEventListener('click', () => {
+    $('btnDownloadPdf').addEventListener('click', async () => {
+      const btn = $('btnDownloadPdf');
       try {
         if (!global.TopoPDF) throw new Error('Módulo PDF no disponible.');
+        btn.disabled = true;
         const opts = getExportOpts();
-        const pdfContent = global.TopoPDF.generateAnatiPDF(state, opts);
+        // Recortar automáticamente la Hoja IGN que cubra el polígono para incrustarla en LOCALIZACION REGIONAL
+        if (global.TopoIGN && state.crsMode === 'utm') {
+          const crop = await global.TopoIGN.generateRegionalCropForPdf(state.points, state.utmZone, state.utmHemi);
+          if (crop) {
+            opts.regionalCrop = crop;
+            if (!opts.anati.hojaIgn || opts.anati.hojaIgn === '3642 II NE') {
+              opts.anati.hojaIgn = crop.sheetCode;
+            }
+          }
+        }
+        const pdfBytes = global.TopoPDF.generateAnatiPDF(state, opts);
         let base = ($('dxfFilename').value.trim() || 'Plano_ANATI').replace(/\.(dxf|pdf)$/i, '');
         const filename = `${base}_ANATI.pdf`;
-        IO.downloadFile(filename, pdfContent, 'application/pdf');
+        IO.downloadFile(filename, pdfBytes, 'application/pdf');
         dxfDialog.close();
-        showToast(`PDF Vectorial ANATI "${filename}" descargado`);
+        showToast(opts.regionalCrop
+          ? `PDF ANATI "${filename}" descargado con Hoja IGN ${opts.regionalCrop.sheetCode}`
+          : `PDF Vectorial ANATI "${filename}" descargado`);
       } catch (err) {
         showToast(`Error al generar PDF: ${err.message}`);
+      } finally {
+        btn.disabled = false;
       }
     });
+
+    // ==================== GESTOR DE HOJAS IGN / MOSAICOS ====================
+    const ignDialog = $('ignDialog');
+    const IGN = global.TopoIGN;
+
+    function syncIgnMapOverlay() {
+      if (!IGN || !mapEngine) return;
+      const allSheets = IGN.getSheets();
+      const activeCount = allSheets.filter(s => s.enabled).length;
+      const op = IGN.getOpacity();
+      mapEngine.setIgnSheets(allSheets, op);
+
+      $('btnOpenIgnModal').classList.toggle('has-active', activeCount > 0);
+      $('ignOpacityBar').classList.toggle('hidden', activeCount === 0 || state.crsMode === 'local');
+      $('ignQuickOpacity').value = String(Math.round(op * 100));
+      $('ignQuickOpacityVal').textContent = `${Math.round(op * 100)}%`;
+      $('ignModalOpacity').value = String(Math.round(op * 100));
+      $('ignModalOpacityVal').textContent = `${Math.round(op * 100)}%`;
+      $('ignStatusNote').textContent = activeCount > 0
+        ? `${activeCount} hoja(s) activa(s) sobre el mapa`
+        : 'Ninguna hoja activa en el mapa';
+    }
+
+    function renderIgnSheetsList() {
+      const container = $('ignSheetsList');
+      if (!container || !IGN) return;
+      const allSheets = IGN.getSheets();
+      container.innerHTML = '';
+
+      allSheets.forEach((s) => {
+        const div = document.createElement('div');
+        div.className = `ign-sheet-item${s.enabled ? ' active' : ''}`;
+        const b = s.bounds;
+        div.innerHTML = `
+          <label class="ign-sheet-info" style="cursor:pointer;">
+            <input type="checkbox" class="ign-chk" data-ign-id="${s.id}" ${s.enabled ? 'checked' : ''} />
+            <div>
+              <strong>${s.code} — ${s.name} ${s.builtin ? '<span class="badge">Incluida</span>' : ''}</strong>
+              <small>Lat ${b.south.toFixed(4)}°..${b.north.toFixed(4)}° · Lon ${b.west.toFixed(4)}°..${b.east.toFixed(4)}°</small>
+            </div>
+          </label>
+          <div class="row-actions">
+            <button type="button" class="tbl-act-btn" data-ign-zoom="${s.id}" title="Centrar mapa en esta hoja">🎯</button>
+            ${!s.builtin ? `<button type="button" class="tbl-act-btn" data-ign-dl="${s.id}" title="Descargar JPG recortado para servidor/GitHub">💾</button>` : ''}
+            ${!s.builtin ? `<button type="button" class="tbl-act-btn del" data-ign-del="${s.id}" title="Eliminar hoja">✕</button>` : ''}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+
+      container.querySelectorAll('.ign-chk').forEach(chk => {
+        chk.addEventListener('change', (e) => {
+          IGN.setSheetEnabled(e.target.dataset.ignId, e.target.checked);
+          syncIgnMapOverlay();
+          renderIgnSheetsList();
+        });
+      });
+
+      container.querySelectorAll('[data-ign-zoom]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = IGN.getSheets().find(item => item.id === btn.dataset.ignZoom);
+          if (!s) return;
+          if (!s.enabled) { IGN.setSheetEnabled(s.id, true); syncIgnMapOverlay(); renderIgnSheetsList(); }
+          mapEngine.fitLatLngBounds(s.bounds);
+          ignDialog.close();
+        });
+      });
+
+      container.querySelectorAll('[data-ign-dl]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const s = IGN.getSheets().find(item => item.id === btn.dataset.ignDl);
+          if (!s || !s.url) return;
+          const a = document.createElement('a');
+          a.href = s.url;
+          a.download = `${s.code.replace(/\s+/g, '_')}_${s.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          showToast(`JPG recortado de hoja ${s.code} descargado`);
+        });
+      });
+
+      container.querySelectorAll('[data-ign-del]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          await IGN.deleteUserSheet(btn.dataset.ignDel);
+          syncIgnMapOverlay();
+          renderIgnSheetsList();
+          showToast('Hoja eliminada del mosaico');
+        });
+      });
+    }
+
+    if (IGN) {
+      // Poblar selector de cuadrantes IGN de Chiriquí
+      const qSel = $('ignQuadrantSelect');
+      IGN.CHIRIQUI_QUADRANTS.forEach((q, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(idx);
+        opt.textContent = `${q.code} — ${q.name} (1:25,000)`;
+        qSel.appendChild(opt);
+      });
+      qSel.addEventListener('change', (e) => {
+        if (e.target.value === 'custom') return;
+        const q = IGN.CHIRIQUI_QUADRANTS[Number(e.target.value)];
+        if (!q) return;
+        $('ignNewCode').value = q.code;
+        $('ignNewName').value = q.name;
+        $('ignSouth').value = q.south.toFixed(6);
+        $('ignNorth').value = q.north.toFixed(6);
+        $('ignWest').value = q.west.toFixed(6);
+        $('ignEast').value = q.east.toFixed(6);
+      });
+
+      $('btnOpenIgnModal').addEventListener('click', () => {
+        renderIgnSheetsList();
+        syncIgnMapOverlay();
+        ignDialog.showModal();
+      });
+
+      const handleOpacityChange = (valPct) => {
+        const op = IGN.setOpacity(Number(valPct) / 100);
+        mapEngine.setIgnOpacity(op);
+        $('ignQuickOpacity').value = String(valPct);
+        $('ignQuickOpacityVal').textContent = `${valPct}%`;
+        $('ignModalOpacity').value = String(valPct);
+        $('ignModalOpacityVal').textContent = `${valPct}%`;
+      };
+      $('ignQuickOpacity').addEventListener('input', (e) => handleOpacityChange(e.target.value));
+      $('ignModalOpacity').addEventListener('input', (e) => handleOpacityChange(e.target.value));
+      $('btnIgnQuickHide').addEventListener('click', () => {
+        IGN.getSheets().forEach(s => IGN.setSheetEnabled(s.id, false));
+        syncIgnMapOverlay();
+      });
+
+      $('btnIgnAddSheet').addEventListener('click', async () => {
+        const fileInputEl = $('ignUploadFile');
+        const file = fileInputEl.files[0];
+        const statusEl = $('ignUploadStatus');
+        const south = parseFloat($('ignSouth').value);
+        const north = parseFloat($('ignNorth').value);
+        const west = parseFloat($('ignWest').value);
+        const east = parseFloat($('ignEast').value);
+
+        if (!file) return showToast('Selecciona primero el archivo PDF, JPG o PNG de la hoja IGN.');
+        if (![south, north, west, east].every(Number.isFinite) || north <= south || east <= west) {
+          return showToast('Selecciona un cuadrante IGN o ingresa las 4 esquinas Lat/Lon válidas.');
+        }
+
+        const btn = $('btnIgnAddSheet');
+        btn.disabled = true;
+        statusEl.textContent = 'Procesando y georreferenciando hoja...';
+        try {
+          const processed = await IGN.processUploadedSheetFile(file, {
+            autoCropIgn25k: $('ignAutoCropPdf').checked
+          });
+          const code = $('ignNewCode').value.trim() || file.name.replace(/\.[^.]+$/, '');
+          const name = $('ignNewName').value.trim() || 'Hoja IGN';
+          const saved = await IGN.saveUserSheet({
+            code,
+            name,
+            scale: '1:25,000',
+            url: processed.dataUrl,
+            bounds: { south, north, west, east },
+            enabled: true
+          });
+          fileInputEl.value = '';
+          statusEl.textContent = `✓ ${saved.code} agregada (${processed.width}×${processed.height} px)`;
+          renderIgnSheetsList();
+          syncIgnMapOverlay();
+          mapEngine.fitLatLngBounds(saved.bounds);
+          showToast(`Hoja IGN ${saved.code} (${saved.name}) georreferenciada y activada`);
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+          showToast(`Error procesando hoja IGN: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      // Cargar hojas guardadas en IndexedDB al inicio
+      IGN.loadSavedSheets().then(() => {
+        syncIgnMapOverlay();
+      });
+    }
 
     // Cerrar modales
     document.querySelectorAll('[data-close]').forEach(btn => {
