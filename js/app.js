@@ -23,7 +23,8 @@
     lotDivision: null,
     closureInfo: null,
     traverseMode: 'bearing', // 'bearing' | 'azimuth' | 'coords'
-    labelsVisible: true
+    labelsVisible: true,
+    editMode: false
   };
 
   let mapEngine = null;
@@ -320,8 +321,38 @@
     showToast('Poligonal de ejemplo cargada en David, Chiriquí (UTM Zona 17N)');
   }
 
-  // ==================== MODO CAPTURA / DIBUJO EN MAPA ====================
+  // ==================== MODO CAPTURA / DIBUJO / EDICIÓN EN MAPA ====================
+  function setEditMode(enabled) {
+    state.editMode = Boolean(enabled);
+    if (state.editMode && mapEngine.pickMode) {
+      mapEngine.setPickMode(null);
+      $('btnPickInitial').classList.remove('active');
+      $('btnMapAddPoint').classList.remove('active');
+      $('btnStartDrawPoly').classList.remove('active');
+    }
+    mapEngine.setEditMode(state.editMode);
+    $('btnToggleEditMode').classList.toggle('active', state.editMode);
+    $('btnMapEditVertices').classList.toggle('active', state.editMode);
+
+    const banner = $('pickBanner');
+    const finishBtn = $('btnFinishDraw');
+    if (state.editMode) {
+      finishBtn.classList.add('hidden');
+      $('pickBannerText').textContent = 'Modo Edición activo — Arrastra cualquier vértice (P1, P2...) sobre el mapa para moverlo';
+      banner.classList.remove('hidden');
+      showToast('Modo edición activado: arrastra cualquier vértice para moverlo');
+    } else if (!mapEngine.pickMode) {
+      banner.classList.add('hidden');
+    }
+  }
+
   function setMapPickMode(mode) {
+    if (mode && state.editMode) {
+      state.editMode = false;
+      mapEngine.setEditMode(false);
+      $('btnToggleEditMode').classList.remove('active');
+      $('btnMapEditVertices').classList.remove('active');
+    }
     mapEngine.setPickMode(mode);
     const banner = $('pickBanner');
     const finishBtn = $('btnFinishDraw');
@@ -434,6 +465,8 @@
       showToast('Haz clic sobre el mapa satelital para dibujar cada vértice del polígono');
     });
     $('btnFinishDraw').addEventListener('click', finishDrawPolygon);
+    $('btnToggleEditMode').addEventListener('click', () => setEditMode(!state.editMode));
+    $('btnMapEditVertices').addEventListener('click', () => setEditMode(!state.editMode));
 
     $('btnClearAll').addEventListener('click', () => {
       state.points = [];
@@ -475,10 +508,16 @@
     $('btnPickInitial').addEventListener('click', () => {
       setMapPickMode(mapEngine.pickMode === 'initial' ? null : 'initial');
     });
-    $('btnCancelPick').addEventListener('click', () => setMapPickMode(null));
+    $('btnCancelPick').addEventListener('click', () => {
+      if (state.editMode) setEditMode(false);
+      setMapPickMode(null);
+    });
 
     global.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && mapEngine && mapEngine.pickMode) setMapPickMode(null);
+      if (e.key === 'Escape') {
+        if (state.editMode) setEditMode(false);
+        if (mapEngine && mapEngine.pickMode) setMapPickMode(null);
+      }
     });
 
     // ==================== TAB 1: POLIGONAL ====================
@@ -1387,7 +1426,30 @@
           showToast(`Destino capturado: E ${coord.e.toFixed(3)}, N ${coord.n.toFixed(3)}. Pulsa "Trasladar Vértice a Destino".`);
         }
       },
-      onFinishDraw: () => finishDrawPolygon()
+      onFinishDraw: () => finishDrawPolygon(),
+      onVertexDragMove: (idx, coord) => {
+        if (!state.points[idx]) return;
+        state.points[idx].e = coord.e;
+        state.points[idx].n = coord.n;
+        updateMetrics();
+      },
+      onVertexDragEnd: (idx, coord) => {
+        if (!state.points[idx]) return;
+        state.points[idx].e = coord.e;
+        state.points[idx].n = coord.n;
+        if (idx === 0) {
+          $('initE').value = coord.e.toFixed(3);
+          $('initN').value = coord.n.toFixed(3);
+        }
+        // Recalcular división de lotes automáticamente si estaba activa
+        if (state.lotDivision && state.lotDivision.ok) {
+          const updated = C.subdividePolygonEqualArea(state.points, state.lotDivision.numLots, state.lotDivision.cutAzimuth);
+          state.lotDivision = updated.ok ? updated : null;
+        }
+        state.closureInfo = null;
+        refreshAll(false);
+        showToast(`${state.points[idx].id} movido a E ${coord.e.toFixed(3)}, N ${coord.n.toFixed(3)}`);
+      }
     });
 
     bindEvents();

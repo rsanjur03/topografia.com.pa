@@ -20,7 +20,8 @@
       this.basemap = 'satellite'; // 'satellite' | 'hybrid' | 'osm' | 'topo' | 'cad'
       this.showLabels = true;
       this.showPoints = true;
-      this.pickMode = null; // null | 'initial' | 'addPoint'
+      this.pickMode = null; // null | 'initial' | 'addPoint' | 'drawPoly' | 'moveDest'
+      this.editMode = false;
 
       // Estado Leaflet
       this.leafletAvailable = typeof global.L !== 'undefined';
@@ -30,6 +31,7 @@
       this.overlayGroup = null;
       this.labelGroup = null;
       this.auxGroup = null;
+      this.mainPolyLayer = null;
 
       // Estado CAD Canvas (para modo local o fallback offline)
       this.canvas = document.getElementById(cadCanvasId);
@@ -38,6 +40,7 @@
       this.isDragging = false;
       this.dragStart = null;
       this.dragMoved = false;
+      this.draggingVertexIdx = -1;
 
       this.lastData = { points: [], closed: false, curves: [], auxLines: [], lotDivision: null, selectedIndex: -1 };
       this.previewLine = null;
@@ -198,8 +201,30 @@
         this._renderCadCanvas();
       }, { passive: false });
 
-      // Pan con arrastre
+      // Pan con arrastre o arrastre de vértices en Modo Edición (CAD Canvas)
       this.canvas.addEventListener('mousedown', (e) => {
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        if (this.editMode && this.lastData.points && this.lastData.points.length > 0) {
+          let hitIdx = -1;
+          let bestDist = 14;
+          this.lastData.points.forEach((p, idx) => {
+            const s = this._worldToScreen(p.e, p.n);
+            const d = Math.hypot(s.x - mx, s.y - my);
+            if (d < bestDist) {
+              bestDist = d;
+              hitIdx = idx;
+            }
+          });
+          if (hitIdx !== -1) {
+            this.draggingVertexIdx = hitIdx;
+            this.canvas.style.cursor = 'grabbing';
+            return;
+          }
+        }
+
         this.isDragging = true;
         this.dragMoved = false;
         this.dragStart = { x: e.clientX, y: e.clientY, cE: this.cadView.centerE, cN: this.cadView.centerN };
@@ -210,6 +235,23 @@
         const rect = this.canvas.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
+
+        if (this.draggingVertexIdx !== -1) {
+          const w = this._screenToWorld(mx, my);
+          const pt = this.lastData.points[this.draggingVertexIdx];
+          if (pt) {
+            pt.e = Number(w.e.toFixed(3));
+            pt.n = Number(w.n.toFixed(3));
+            this._renderCadCanvas();
+            if (this.callbacks.onVertexDragMove) {
+              this.callbacks.onVertexDragMove(this.draggingVertexIdx, { e: pt.e, n: pt.n });
+            }
+          }
+          if (this.callbacks.onCursorMove) {
+            this.callbacks.onCursorMove({ e: w.e, n: w.n, lat: null, lon: null });
+          }
+          return;
+        }
 
         if (this.isDragging && this.dragStart) {
           const dx = e.clientX - this.dragStart.x;
@@ -229,6 +271,15 @@
       });
 
       global.addEventListener('mouseup', () => {
+        if (this.draggingVertexIdx !== -1) {
+          const idx = this.draggingVertexIdx;
+          const pt = this.lastData.points[idx];
+          this.draggingVertexIdx = -1;
+          this.canvas.style.cursor = this.pickMode ? 'crosshair' : 'grab';
+          if (pt && this.callbacks.onVertexDragEnd) {
+            this.callbacks.onVertexDragEnd(idx, { e: pt.e, n: pt.n });
+          }
+        }
         this.isDragging = false;
       });
 
@@ -319,6 +370,11 @@
         this.map.removeLayer(this.previewLine);
         this.previewLine = null;
       }
+    }
+
+    setEditMode(enabled) {
+      this.editMode = Boolean(enabled);
+      this.render(this.lastData);
     }
 
     setLabelsVisible(visible) {
@@ -444,16 +500,17 @@
       const metrics = C.polygonMetrics(points, closed && points.length >= 3);
 
       // Polígono o polilínea
+      this.mainPolyLayer = null;
       if (validLatLngs.length >= 2) {
         if (closed && validLatLngs.length >= 3) {
-          L.polygon(validLatLngs, {
+          this.mainPolyLayer = L.polygon(validLatLngs, {
             color: '#00e5a0',
             weight: 2.8,
             fillColor: '#00e5a0',
             fillOpacity: lotDivision && lotDivision.ok ? 0.05 : 0.18
           }).addTo(this.overlayGroup);
         } else {
-          L.polyline(validLatLngs, {
+          this.mainPolyLayer = L.polyline(validLatLngs, {
             color: '#38bdf8',
             weight: 3,
             opacity: 0.95
@@ -582,35 +639,80 @@
         }
       }
 
-      // Marcadores de vértices / puntos
+      // Marcadores de vértices / puntos (arrastrables cuando editMode está activo)
+      const liveLatLngs = latLngs.map(ll => (ll ? [ll[0], ll[1]] : null));
       points.forEach((p, idx) => {
         const ll = latLngs[idx];
         if (!ll) return;
         const isFirst = idx === 0;
-        const marker = L.circleMarker(ll, {
-          radius: isFirst ? 7 : 5.5,
-          color: '#0f172a',
-          weight: 2,
-          fillColor: isFirst ? '#f59e0b' : '#38bdf8',
-          fillOpacity: 1
-        }).addTo(this.overlayGroup);
 
-        marker.bindPopup(`
-          <div class="map-popup">
-            <div class="map-popup-title">${p.id} ${p.desc ? `<small>(${p.desc})</small>` : ''}</div>
-            <div><b>Este (X):</b> ${p.e.toFixed(3)} m</div>
-            <div><b>Norte (Y):</b> ${p.n.toFixed(3)} m</div>
-            <div><b>Cota (Z):</b> ${(Number(p.z) || 0).toFixed(2)} m</div>
-            <div class="map-popup-geo">Lat ${ll[0].toFixed(6)}°, Lon ${ll[1].toFixed(6)}°</div>
-          </div>
-        `);
+        if (this.editMode) {
+          const handleIcon = L.divIcon({
+            className: 'vertex-drag-icon',
+            html: `<div class="vertex-handle ${isFirst ? 'is-start' : ''}" title="Arrastra para mover ${p.id}"></div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+          const dragMarker = L.marker(ll, {
+            icon: handleIcon,
+            draggable: true,
+            zIndexOffset: 500
+          }).addTo(this.overlayGroup);
+
+          dragMarker.on('drag', (ev) => {
+            const pos = ev.target.getLatLng();
+            liveLatLngs[idx] = [pos.lat, pos.lng];
+            if (this.mainPolyLayer) {
+              this.mainPolyLayer.setLatLngs(liveLatLngs.filter(Boolean));
+            }
+            const utm = Geo.latLonToUtm(pos.lat, pos.lng, this.utmZone);
+            if (this.callbacks.onCursorMove) {
+              this.callbacks.onCursorMove({ e: utm.easting, n: utm.northing, lat: pos.lat, lon: pos.lng });
+            }
+            if (this.callbacks.onVertexDragMove) {
+              this.callbacks.onVertexDragMove(idx, {
+                e: Number(utm.easting.toFixed(3)),
+                n: Number(utm.northing.toFixed(3))
+              });
+            }
+          });
+
+          dragMarker.on('dragend', (ev) => {
+            const pos = ev.target.getLatLng();
+            const utm = Geo.latLonToUtm(pos.lat, pos.lng, this.utmZone);
+            if (this.callbacks.onVertexDragEnd) {
+              this.callbacks.onVertexDragEnd(idx, {
+                e: Number(utm.easting.toFixed(3)),
+                n: Number(utm.northing.toFixed(3))
+              });
+            }
+          });
+        } else {
+          const marker = L.circleMarker(ll, {
+            radius: isFirst ? 7 : 5.5,
+            color: '#0f172a',
+            weight: 2,
+            fillColor: isFirst ? '#f59e0b' : '#38bdf8',
+            fillOpacity: 1
+          }).addTo(this.overlayGroup);
+
+          marker.bindPopup(`
+            <div class="map-popup">
+              <div class="map-popup-title">${p.id} ${p.desc ? `<small>(${p.desc})</small>` : ''}</div>
+              <div><b>Este (X):</b> ${p.e.toFixed(3)} m</div>
+              <div><b>Norte (Y):</b> ${p.n.toFixed(3)} m</div>
+              <div><b>Cota (Z):</b> ${(Number(p.z) || 0).toFixed(2)} m</div>
+              <div class="map-popup-geo">Lat ${ll[0].toFixed(6)}°, Lon ${ll[1].toFixed(6)}°</div>
+            </div>
+          `);
+        }
 
         if (this.showLabels) {
           const ptIcon = L.divIcon({
             className: 'map-pt-label',
             html: `<span class="pt-tag ${isFirst ? 'pt-tag-start' : ''}">${p.id}</span>`,
             iconSize: [0, 0],
-            iconAnchor: [-10, 12]
+            iconAnchor: [-12, 12]
           });
           L.marker(ll, { icon: ptIcon, interactive: false }).addTo(this.labelGroup);
         }
@@ -867,16 +969,22 @@
         ctx.restore();
       }
 
-      // Vértices
+      // Vértices (con aro resaltado si editMode está activo)
       points.forEach((p, idx) => {
         const s = this._worldToScreen(p.e, p.n);
         const isFirst = idx === 0;
+        if (this.editMode) {
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 11, 0, Math.PI * 2);
+          ctx.fillStyle = isFirst ? 'rgba(0, 229, 160, 0.25)' : 'rgba(245, 158, 11, 0.28)';
+          ctx.fill();
+        }
         ctx.beginPath();
-        ctx.arc(s.x, s.y, isFirst ? 6.5 : 5, 0, Math.PI * 2);
-        ctx.fillStyle = isFirst ? '#f59e0b' : '#38bdf8';
+        ctx.arc(s.x, s.y, this.editMode ? 7.5 : (isFirst ? 6.5 : 5), 0, Math.PI * 2);
+        ctx.fillStyle = this.editMode ? (isFirst ? '#00e5a0' : '#f59e0b') : (isFirst ? '#f59e0b' : '#38bdf8');
         ctx.fill();
         ctx.lineWidth = 2;
-        ctx.strokeStyle = isLight ? '#ffffff' : '#0b1120';
+        ctx.strokeStyle = this.editMode ? '#ffffff' : (isLight ? '#ffffff' : '#0b1120');
         ctx.stroke();
 
         if (this.showLabels) {
