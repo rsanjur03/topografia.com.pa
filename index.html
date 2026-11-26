@@ -34,7 +34,7 @@
 
         <div class="divider-v"></div>
 
-        <input id="projectNameInput" class="project-input" type="text" value="Lote_Panama_01" title="Nombre del proyecto (usado en DXF)" aria-label="Nombre del proyecto" />
+        <input id="projectNameInput" class="project-input" type="text" value="Finca_Chiriqui_17N" title="Nombre del proyecto (usado en DXF)" aria-label="Nombre del proyecto" />
 
         <select id="crsSelect" class="crs-select" title="Sistema de Coordenadas">
           <option value="utm17N" selected>UTM WGS84 · Zona 17N (Panamá)</option>
@@ -44,9 +44,13 @@
       </div>
 
       <div class="topbar-actions">
-        <button id="btnLoadDemo" class="btn btn-ghost" title="Cargar poligonal de ejemplo en Ciudad de Panamá">
+        <button id="btnLoadDemo" class="btn btn-ghost" title="Cargar poligonal de ejemplo en David, Chiriquí">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 18 21 6 21 2 8.5 12 2"/></svg>
           <span>Ejemplo</span>
+        </button>
+        <button id="btnStartDrawPoly" class="btn btn-secondary" title="Dibujar un polígono directamente sobre la imagen satelital o mapa para obtener sus datos de campo">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
+          <span>Dibujar en Mapa</span>
         </button>
         <button id="btnOpenImport" class="btn btn-secondary" title="Importar archivo CSV o TXT">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -95,11 +99,11 @@
               </label>
               <label class="field">
                 <span>Este (X)</span>
-                <input id="initE" type="number" step="0.001" value="663250.000" />
+                <input id="initE" type="number" step="0.001" value="342165.000" />
               </label>
               <label class="field">
                 <span>Norte (Y)</span>
-                <input id="initN" type="number" step="0.001" value="993450.000" />
+                <input id="initN" type="number" step="0.001" value="932500.000" />
               </label>
             </div>
             <div class="grid-2 mt-xs">
@@ -270,6 +274,9 @@
                 <option value="offset">6. Estación y Offset (Línea Base A → B)</option>
                 <option value="subdivide">7. Subdividir Línea en N Tramos Iguales</option>
                 <option value="curve">8. Curva Horizontal Simple (Replanteo Vial)</option>
+                <option value="rotate">9. Girar Polígono / Puntos (desde Vértice)</option>
+                <option value="move">10. Mover / Trasladar Todos los Puntos</option>
+                <option value="lots">11. Dividir Polígono en Lotes Iguales (2, 3, N)</option>
               </select>
             </label>
           </div>
@@ -503,6 +510,120 @@
             <div id="resCurve" class="result-box hidden mt-sm"></div>
           </div>
 
+          <!-- 9. GIRAR POLIGONO / PUNTOS -->
+          <div id="cogo-rotate" class="card cogo-panel hidden">
+            <h3>Girar Polígono / Todos los Puntos</h3>
+            <label class="field mt-xs">
+              <span>Punto Pivote (Centro de Giro)</span>
+              <select id="rotPivotSelect" class="pt-select"></select>
+            </label>
+            <div class="grid-2 mt-xs">
+              <label class="field">
+                <span>Ángulo de giro (grados)</span>
+                <input id="rotAngleDeg" type="number" step="0.01" value="15" />
+              </label>
+              <label class="field">
+                <span>Sentido</span>
+                <select id="rotDir">
+                  <option value="1" selected>Horario / Derecha (+)</option>
+                  <option value="-1">Antihorario / Izquierda (−)</option>
+                </select>
+              </label>
+            </div>
+            <button id="btnApplyRotate" class="btn btn-primary btn-full mt-sm">Aplicar Giro</button>
+            <div class="quick-pills mt-xs">
+              <button type="button" class="chip-btn" data-rot="-90">−90°</button>
+              <button type="button" class="chip-btn" data-rot="-15">−15°</button>
+              <button type="button" class="chip-btn" data-rot="-1">−1°</button>
+              <button type="button" class="chip-btn" data-rot="1">+1°</button>
+              <button type="button" class="chip-btn" data-rot="15">+15°</button>
+              <button type="button" class="chip-btn" data-rot="90">+90°</button>
+            </div>
+            <div id="resRotate" class="result-box hidden mt-sm"></div>
+          </div>
+
+          <!-- 10. MOVER / TRASLADAR TODOS LOS PUNTOS -->
+          <div id="cogo-move" class="card cogo-panel hidden">
+            <h3>Mover / Trasladar Todos los Puntos</h3>
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span>ΔEste (m)</span>
+                <input id="moveDe" type="number" step="0.001" value="10.000" />
+              </label>
+              <label class="field">
+                <span>ΔNorte (m)</span>
+                <input id="moveDn" type="number" step="0.001" value="0.000" />
+              </label>
+              <label class="field">
+                <span>ΔCota (m)</span>
+                <input id="moveDz" type="number" step="0.01" value="0" />
+              </label>
+            </div>
+            <button id="btnMoveDelta" class="btn btn-primary btn-full mt-sm">Mover por Desplazamiento (ΔE, ΔN)</button>
+
+            <hr class="sep" />
+            <div class="card-header" style="margin-bottom:4px;">
+              <h3>O mover desde vértice a destino</h3>
+              <button id="btnPickMoveDest" type="button" class="chip-btn">📍 Elegir en mapa</button>
+            </div>
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span>Vértice base</span>
+                <select id="moveBasePt" class="pt-select"></select>
+              </label>
+              <label class="field">
+                <span>Destino E</span>
+                <input id="moveDestE" type="number" step="0.001" placeholder="Este" />
+              </label>
+              <label class="field">
+                <span>Destino N</span>
+                <input id="moveDestN" type="number" step="0.001" placeholder="Norte" />
+              </label>
+            </div>
+            <button id="btnMoveToCoord" class="btn btn-secondary btn-full mt-sm">Trasladar Vértice a Destino</button>
+            <div id="resMove" class="result-box hidden mt-sm"></div>
+          </div>
+
+          <!-- 11. DIVIDIR POLIGONO EN LOTES IGUALES -->
+          <div id="cogo-lots" class="card cogo-panel hidden">
+            <h3>Dividir Polígono en Lotes Iguales</h3>
+            <div class="grid-2 mt-xs">
+              <label class="field">
+                <span>N° de partes iguales</span>
+                <input id="lotsCount" type="number" min="2" max="20" step="1" value="2" />
+              </label>
+              <label class="field">
+                <span>Dirección de corte</span>
+                <select id="lotsDirMode">
+                  <option value="side" selected>Paralela a un lado</option>
+                  <option value="ns">Norte – Sur (0°)</option>
+                  <option value="ew">Este – Oeste (90°)</option>
+                  <option value="custom">Rumbo / Azimut libre</option>
+                </select>
+              </label>
+            </div>
+            <div class="quick-pills mt-xs">
+              <button type="button" class="chip-btn" data-lots="2">2 lotes</button>
+              <button type="button" class="chip-btn" data-lots="3">3 lotes</button>
+              <button type="button" class="chip-btn" data-lots="4">4 lotes</button>
+              <button type="button" class="chip-btn" data-lots="5">5 lotes</button>
+              <button type="button" class="chip-btn" data-lots="6">6 lotes</button>
+            </div>
+            <label id="lotsSideWrap" class="field mt-xs">
+              <span>Lado de referencia</span>
+              <select id="lotsSideSelect"></select>
+            </label>
+            <label id="lotsCustomWrap" class="field mt-xs hidden">
+              <span>Rumbo o Azimut de corte</span>
+              <input id="lotsCustomDir" type="text" placeholder="Ej: N 30 00 00 E o 45" value="N 00 00 00 E" />
+            </label>
+            <div class="row-actions mt-sm">
+              <button id="btnCalcLots" class="btn btn-primary btn-full">Dividir en Lotes Iguales</button>
+              <button id="btnClearLots" class="btn btn-ghost">Limpiar</button>
+            </div>
+            <div id="resLots" class="result-box hidden mt-sm"></div>
+          </div>
+
           <div class="card">
             <button id="btnClearAux" class="btn btn-ghost btn-full">Limpiar líneas auxiliares COGO</button>
           </div>
@@ -587,17 +708,18 @@
           </button>
         </div>
 
-        <!-- Banner de modo captura en mapa -->
+        <!-- Banner de modo captura / dibujo en mapa -->
         <div id="pickBanner" class="pick-banner hidden">
           <span id="pickBannerText">Haga clic en el mapa para seleccionar el punto</span>
+          <button id="btnFinishDraw" class="chip-btn finish-btn hidden">✓ Terminar y Cerrar</button>
           <button id="btnCancelPick" class="chip-btn">Cancelar (Esc)</button>
         </div>
 
         <!-- Barra HUD inferior de coordenadas en vivo -->
         <div class="coord-hud">
-          <span class="hud-item"><b>E:</b> <span id="hudE">663250.000</span></span>
-          <span class="hud-item"><b>N:</b> <span id="hudN">993450.000</span></span>
-          <span id="hudLatLonWrap" class="hud-item"><b>Geo:</b> <span id="hudLatLon">8.983300°, -79.516700°</span></span>
+          <span class="hud-item"><b>E:</b> <span id="hudE">342165.000</span></span>
+          <span class="hud-item"><b>N:</b> <span id="hudN">932500.000</span></span>
+          <span id="hudLatLonWrap" class="hud-item"><b>Geo:</b> <span id="hudLatLon">8.433300°, -82.433300°</span></span>
           <span id="hudCrsBadge" class="hud-badge">UTM WGS84 · 17N</span>
         </div>
       </main>

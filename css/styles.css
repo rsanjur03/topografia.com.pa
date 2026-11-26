@@ -84,7 +84,17 @@ html, body {
 .topbar-left, .topbar-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
+  min-width: 0;
+}
+
+.topbar-actions {
+  flex-shrink: 0;
+}
+
+.topbar .btn {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .brand {
@@ -132,13 +142,13 @@ html, body {
 }
 
 .project-input {
-  width: 155px;
+  width: 132px;
   background: var(--bg-input);
   border: 1px solid var(--border);
   color: var(--text-main);
   border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  font-size: 12.5px;
+  padding: 6px 8px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -147,9 +157,12 @@ html, body {
   border: 1px solid var(--border);
   color: var(--text-main);
   border-radius: var(--radius-sm);
-  padding: 6px 9px;
-  font-size: 12.5px;
-  max-width: 230px;
+  padding: 6px 8px;
+  font-size: 12px;
+  max-width: 185px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ==================== WORKSPACE ==================== */
@@ -681,6 +694,35 @@ html, body {
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .area-pill span { font-size: 10.5px; color: #a7f3d0; }
+
+.lot-pill {
+  transform: translate(-50%, -50%);
+  background: rgba(15, 23, 42, 0.88);
+  color: #fde68a;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  padding: 3px 8px;
+  text-align: center;
+  white-space: nowrap;
+  display: inline-flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.45);
+}
+.lot-pill span { font-size: 10px; color: #f8fafc; }
+
+.quick-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pick-banner .finish-btn {
+  background: #059669;
+  color: #ffffff;
+  border-color: #047857;
+}
 
 .pt-tag {
   background: rgba(15, 23, 42, 0.86);

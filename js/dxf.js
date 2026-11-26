@@ -226,6 +226,7 @@
       { name: 'TOPO_RUMBOS_DIST', color: 4, ltype: 'CONTINUOUS' },   // Cian
       { name: 'TOPO_AREA_CENTRO', color: 2, ltype: 'CONTINUOUS' },   // Amarillo
       { name: 'TOPO_CURVAS', color: 6, ltype: 'CONTINUOUS' },        // Magenta
+      { name: 'TOPO_LOTES', color: 5, ltype: 'DASHED' },             // Azul (Subdivision de lotes)
       { name: 'TOPO_COGO_AUX', color: 8, ltype: 'DASHED' },          // Gris
       { name: 'TOPO_CUADRO_DATOS', color: 7, ltype: 'CONTINUOUS' },  // Blanco/Negro
       { name: 'TOPO_CUADRO_TEXTO', color: 2, ltype: 'CONTINUOUS' },  // Amarillo
@@ -375,6 +376,24 @@
     if (state.auxLines && state.auxLines.length > 0) {
       for (const line of state.auxLines) {
         dxf.addLine('TOPO_COGO_AUX', line.from.e, line.from.n, line.to.e, line.to.n);
+      }
+    }
+
+    // 5b. División en Lotes (líneas de corte + etiquetas de lote)
+    if (state.lotDivision && state.lotDivision.ok) {
+      for (const cl of state.lotDivision.cutLines || []) {
+        if (cl.from && cl.to) {
+          dxf.addLine('TOPO_LOTES', cl.from.e, cl.from.n, cl.to.e, cl.to.n);
+          const mx = (cl.from.e + cl.to.e) / 2;
+          const my = (cl.from.n + cl.to.n) / 2;
+          dxf.addText('TOPO_LOTES', `${cl.bearing} (${cl.dist.toFixed(2)}m)`, mx, my, baseTextH * 0.65, 0, 1, 2);
+        }
+      }
+      for (const lot of state.lotDivision.lots || []) {
+        if (lot.centroid) {
+          dxf.addText('TOPO_LOTES', `${lot.name.toUpperCase()}`, lot.centroid.e, lot.centroid.n + baseTextH * 0.55, baseTextH * 0.85, 0, 1, 2);
+          dxf.addText('TOPO_LOTES', `${lot.areaM2.toFixed(2)} m2`, lot.centroid.e, lot.centroid.n - baseTextH * 0.55, baseTextH * 0.72, 0, 1, 2);
+        }
       }
     }
 

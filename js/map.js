@@ -39,7 +39,9 @@
       this.dragStart = null;
       this.dragMoved = false;
 
-      this.lastData = { points: [], closed: false, curves: [], auxLines: [], selectedIndex: -1 };
+      this.lastData = { points: [], closed: false, curves: [], auxLines: [], lotDivision: null, selectedIndex: -1 };
+      this.previewLine = null;
+      this.cadCursorWorld = null;
 
       this._initLeaflet();
       this._initCadCanvas();
@@ -50,18 +52,19 @@
       if (!this.leafletAvailable) return;
       const L = global.L;
 
-      // Centro inicial: Ciudad de Panamá (Zona 17N)
+      // Centro inicial: David, Chiriquí, Panamá (Zona 17N)
       this.map = L.map(this.containerId, {
-        center: [8.9833, -79.5167],
+        center: [8.4333, -82.4333],
         zoom: 17,
         maxZoom: 22,
         zoomControl: false,
+        doubleClickZoom: true,
         preferCanvas: true
       });
 
       L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(this.map);
 
-      // Definición de basemaps
+      // Definición de basemaps (Esri funciona sin bloqueo 403 tanto local como en dominio)
       this.tileLayers = {
         satellite: [
           L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -88,16 +91,16 @@
           })
         ],
         osm: [
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
+          L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; World Street Map',
             maxNativeZoom: 19,
             maxZoom: 22
           })
         ],
         topo: [
-          L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenTopoMap (CC-BY-SA)',
-            maxNativeZoom: 17,
+          L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; World Topo Map',
+            maxNativeZoom: 19,
             maxZoom: 22
           })
         ],
@@ -117,6 +120,29 @@
         if (this.callbacks.onCursorMove) {
           this.callbacks.onCursorMove({ e: utm.easting, n: utm.northing, lat, lon: lng });
         }
+        // Línea elástica en vivo al dibujar polígono sobre satelital/mapa
+        if (this.pickMode === 'drawPoly' && this.lastData.points.length > 0) {
+          const lastLL = this._ptToLatLng(this.lastData.points[this.lastData.points.length - 1]);
+          const firstLL = this._ptToLatLng(this.lastData.points[0]);
+          if (lastLL) {
+            const previewPts = this.lastData.points.length >= 2 && firstLL
+              ? [lastLL, [lat, lng], firstLL]
+              : [lastLL, [lat, lng]];
+            if (this.previewLine) {
+              this.previewLine.setLatLngs(previewPts);
+            } else {
+              this.previewLine = L.polyline(previewPts, {
+                color: '#fbbf24',
+                weight: 2,
+                dashArray: '6, 6',
+                interactive: false
+              }).addTo(this.map);
+            }
+          }
+        } else if (this.previewLine) {
+          this.map.removeLayer(this.previewLine);
+          this.previewLine = null;
+        }
       });
 
       this.map.on('click', (ev) => {
@@ -130,6 +156,13 @@
             lat,
             lon: lng
           });
+        }
+      });
+
+      this.map.on('dblclick', (ev) => {
+        if (this.pickMode === 'drawPoly' && this.callbacks.onFinishDraw) {
+          L.DomEvent.stop(ev);
+          this.callbacks.onFinishDraw();
         }
       });
     }
@@ -278,6 +311,14 @@
       const cursor = mode ? 'crosshair' : '';
       if (mapEl) mapEl.style.cursor = cursor;
       if (this.canvas) this.canvas.style.cursor = cursor || 'grab';
+      if (this.map) {
+        if (mode === 'drawPoly') this.map.doubleClickZoom.disable();
+        else this.map.doubleClickZoom.enable();
+      }
+      if (!mode && this.previewLine && this.map) {
+        this.map.removeLayer(this.previewLine);
+        this.previewLine = null;
+      }
     }
 
     setLabelsVisible(visible) {
@@ -331,7 +372,7 @@
       const pts = this.lastData.points || [];
       if (pts.length === 0) {
         if (!this.isUsingCadCanvas() && this.map) {
-          this.map.setView([8.9833, -79.5167], 13);
+          this.map.setView([8.4333, -82.4333], 14);
         }
         return;
       }
@@ -393,7 +434,7 @@
       this.auxGroup.clearLayers();
       this.labelGroup.clearLayers();
 
-      const { points, closed, curves, auxLines } = this.lastData;
+      const { points, closed, curves, auxLines, lotDivision } = this.lastData;
       if (!points || points.length === 0) return;
 
       const latLngs = points.map(p => this._ptToLatLng(p));
@@ -409,7 +450,7 @@
             color: '#00e5a0',
             weight: 2.8,
             fillColor: '#00e5a0',
-            fillOpacity: 0.18
+            fillOpacity: lotDivision && lotDivision.ok ? 0.05 : 0.18
           }).addTo(this.overlayGroup);
         } else {
           L.polyline(validLatLngs, {
@@ -418,6 +459,45 @@
             opacity: 0.95
           }).addTo(this.overlayGroup);
         }
+      }
+
+      // Lotes subdivididos (División en partes iguales)
+      if (lotDivision && lotDivision.ok) {
+        const lotColors = ['#38bdf8', '#f59e0b', '#a855f7', '#10b981', '#f43f5e', '#eab308', '#06b6d4'];
+        (lotDivision.lots || []).forEach((lot, idx) => {
+          const lotLL = (lot.points || []).map(p => this._ptToLatLng(p)).filter(Boolean);
+          if (lotLL.length >= 3) {
+            const color = lotColors[idx % lotColors.length];
+            L.polygon(lotLL, {
+              color,
+              weight: 1.5,
+              fillColor: color,
+              fillOpacity: 0.22
+            }).addTo(this.auxGroup);
+          }
+          if (lot.centroid) {
+            const cLL = this._ptToLatLng(lot.centroid);
+            if (cLL) {
+              const lotIcon = L.divIcon({
+                className: 'map-area-label',
+                html: `<div class="lot-pill"><strong>${lot.name}</strong><span>${lot.areaM2.toLocaleString('en-US', { maximumFractionDigits: 2 })} m²</span></div>`,
+                iconSize: [0, 0]
+              });
+              L.marker(cLL, { icon: lotIcon, interactive: false }).addTo(this.labelGroup);
+            }
+          }
+        });
+        (lotDivision.cutLines || []).forEach((cl) => {
+          const a = this._ptToLatLng(cl.from);
+          const b = this._ptToLatLng(cl.to);
+          if (a && b) {
+            L.polyline([a, b], {
+              color: '#fbbf24',
+              weight: 2.6,
+              dashArray: '8, 5'
+            }).addTo(this.auxGroup);
+          }
+        });
       }
 
       // Líneas auxiliares COGO
@@ -469,8 +549,8 @@
         }
       }
 
-      // Etiqueta de Área en el centroide
-      if (closed && points.length >= 3 && metrics.centroid && metrics.areaM2 > 0) {
+      // Etiqueta de Área en el centroide (se oculta si hay lotes subdivididos para no encimar texto)
+      if (closed && points.length >= 3 && metrics.centroid && metrics.areaM2 > 0 && !(lotDivision && lotDivision.ok)) {
         const cLL = this._ptToLatLng(metrics.centroid);
         if (cLL) {
           const icon = L.divIcon({
@@ -608,7 +688,7 @@
       ctx.fillText('N', 0, -23);
       ctx.restore();
 
-      const { points, closed, curves, auxLines } = this.lastData;
+      const { points, closed, curves, auxLines, lotDivision } = this.lastData;
       if (!points || points.length === 0) {
         ctx.fillStyle = isLight ? '#64748b' : '#94a3b8';
         ctx.font = '14px system-ui, sans-serif';
@@ -677,6 +757,56 @@
         ctx.restore();
       }
 
+      // Lotes subdivididos en CAD Canvas
+      if (lotDivision && lotDivision.ok) {
+        const lotFills = [
+          'rgba(56, 189, 248, 0.16)',
+          'rgba(245, 158, 11, 0.16)',
+          'rgba(168, 85, 247, 0.16)',
+          'rgba(16, 185, 129, 0.16)',
+          'rgba(244, 63, 94, 0.16)'
+        ];
+        (lotDivision.lots || []).forEach((lot, idx) => {
+          if (lot.points && lot.points.length >= 3) {
+            ctx.save();
+            ctx.beginPath();
+            lot.points.forEach((p, i) => {
+              const s = this._worldToScreen(p.e, p.n);
+              if (i === 0) ctx.moveTo(s.x, s.y);
+              else ctx.lineTo(s.x, s.y);
+            });
+            ctx.closePath();
+            ctx.fillStyle = lotFills[idx % lotFills.length];
+            ctx.fill();
+            ctx.restore();
+          }
+          if (lot.centroid) {
+            const c = this._worldToScreen(lot.centroid.e, lot.centroid.n);
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 12px system-ui, sans-serif';
+            ctx.fillStyle = isLight ? '#92400e' : '#fde68a';
+            ctx.fillText(lot.name, c.x, c.y - 3);
+            ctx.font = '11px ui-monospace, monospace';
+            ctx.fillText(`${lot.areaM2.toFixed(2)} m²`, c.x, c.y + 12);
+            ctx.restore();
+          }
+        });
+        (lotDivision.cutLines || []).forEach((cl) => {
+          const a = this._worldToScreen(cl.from.e, cl.from.n);
+          const b = this._worldToScreen(cl.to.e, cl.to.n);
+          ctx.save();
+          ctx.setLineDash([7, 5]);
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.restore();
+        });
+      }
+
       // Etiquetas de Rumbo y Distancia
       if (this.showLabels && metrics.legs.length > 0) {
         ctx.save();
@@ -704,7 +834,7 @@
       }
 
       // Área en centroide
-      if (closed && points.length >= 3 && metrics.centroid && metrics.areaM2 > 0) {
+      if (closed && points.length >= 3 && metrics.centroid && metrics.areaM2 > 0 && !(lotDivision && lotDivision.ok)) {
         const c = this._worldToScreen(metrics.centroid.e, metrics.centroid.n);
         ctx.save();
         ctx.textAlign = 'center';

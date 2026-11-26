@@ -11,7 +11,7 @@
 
   // ==================== ESTADO DEL PROYECTO ====================
   const state = {
-    projectName: 'Lote_Panama_01',
+    projectName: 'Finca_Chiriqui_17N',
     crsMode: 'utm',          // 'utm' | 'local'
     utmZone: 17,
     utmHemi: 'N',
@@ -20,6 +20,7 @@
     closed: true,
     curves: [],
     auxLines: [],
+    lotDivision: null,
     closureInfo: null,
     traverseMode: 'bearing', // 'bearing' | 'azimuth' | 'coords'
     labelsVisible: true
@@ -83,7 +84,8 @@
         points: state.points,
         closed: state.closed,
         curves: state.curves,
-        auxLines: state.auxLines
+        auxLines: state.auxLines,
+        lotDivision: state.lotDivision
       });
       if (fitBounds) mapEngine.fitBounds();
     }
@@ -128,6 +130,23 @@
         sel.value = '0';
       }
     });
+
+    // Poblar selector de lados para División de Lotes
+    const sideSel = $('lotsSideSelect');
+    if (sideSel) {
+      const prevSide = sideSel.value;
+      sideSel.innerHTML = '';
+      const metrics = C.polygonMetrics(state.points, state.points.length >= 3);
+      metrics.legs.forEach((leg, idx) => {
+        const opt = document.createElement('option');
+        opt.value = String(leg.azimuth);
+        opt.textContent = `Lado ${leg.fromId} → ${leg.toId} (${leg.bearing})`;
+        sideSel.appendChild(opt);
+      });
+      if (prevSide && Array.from(sideSel.options).some(o => o.value === prevSide)) {
+        sideSel.value = prevSide;
+      }
+    }
   }
 
   function updateMetrics() {
@@ -191,30 +210,31 @@
     }
   }
 
-  // ==================== POLIGONAL DE EJEMPLO (CIUDAD DE PANAMÁ, UTM 17N) ====================
+  // ==================== POLIGONAL DE EJEMPLO (DAVID, CHIRIQUÍ, UTM 17N) ====================
   function loadPanamaDemo() {
-    // Parcela realista en zona urbana de Ciudad de Panamá (UTM WGS84 Zona 17N)
+    // Parcela realista en David, Chiriquí, Panamá (UTM WGS84 Zona 17N, ~8.433° N, 82.433° W)
     state.crsMode = 'utm';
     state.utmZone = 17;
     state.utmHemi = 'N';
-    state.crsLabel = 'UTM WGS84 ZONA 17N (PANAMA)';
+    state.crsLabel = 'UTM WGS84 ZONA 17N (CHIRIQUI, PANAMA)';
     $('crsSelect').value = 'utm17N';
     $('hudCrsBadge').textContent = 'UTM WGS84 · 17N';
-    $('projectNameInput').value = 'Finca_Panama_17N';
-    state.projectName = 'Finca_Panama_17N';
+    $('projectNameInput').value = 'Finca_Chiriqui_17N';
+    state.projectName = 'Finca_Chiriqui_17N';
 
-    const p1 = { id: 'P1', e: 663240.000, n: 993440.000, z: 14.50, desc: 'MOJON 1' };
+    const p1 = { id: 'P1', e: 342165.000, n: 932500.000, z: 48.50, desc: 'MOJON 1 DAVID' };
     const leg1 = C.direct(p1, C.bearingToAzimuth('N', 'E', C.dmsToDeg(62, 15, 20)), 58.40);
-    const p2 = { id: 'P2', e: leg1.e, n: leg1.n, z: 14.85, desc: 'LINDERO NE' };
+    const p2 = { id: 'P2', e: leg1.e, n: leg1.n, z: 48.90, desc: 'LINDERO NE' };
     const leg2 = C.direct(p2, C.bearingToAzimuth('S', 'E', C.dmsToDeg(28, 40, 10)), 42.75);
-    const p3 = { id: 'P3', e: leg2.e, n: leg2.n, z: 14.20, desc: 'ESQUINA SE' };
+    const p3 = { id: 'P3', e: leg2.e, n: leg2.n, z: 48.30, desc: 'ESQUINA SE' };
     const leg3 = C.direct(p3, C.bearingToAzimuth('S', 'W', C.dmsToDeg(61, 50, 45)), 61.15);
-    const p4 = { id: 'P4', e: leg3.e, n: leg3.n, z: 13.95, desc: 'LINDERO SW' };
+    const p4 = { id: 'P4', e: leg3.e, n: leg3.n, z: 48.10, desc: 'LINDERO SW' };
 
     state.points = [p1, p2, p3, p4];
     state.closed = true;
     state.curves = [];
     state.auxLines = [];
+    state.lotDivision = null;
     state.closureInfo = null;
     $('chkClosedPoly').checked = true;
 
@@ -226,15 +246,18 @@
 
     mapEngine.setCRS('utm', 17, 'N');
     refreshAll(true);
-    showToast('Poligonal de ejemplo cargada en Panamá (UTM Zona 17N)');
+    showToast('Poligonal de ejemplo cargada en David, Chiriquí (UTM Zona 17N)');
   }
 
-  // ==================== MODO CAPTURA EN MAPA ====================
+  // ==================== MODO CAPTURA / DIBUJO EN MAPA ====================
   function setMapPickMode(mode) {
     mapEngine.setPickMode(mode);
     const banner = $('pickBanner');
+    const finishBtn = $('btnFinishDraw');
     $('btnPickInitial').classList.toggle('active', mode === 'initial');
     $('btnMapAddPoint').classList.toggle('active', mode === 'addPoint');
+    $('btnStartDrawPoly').classList.toggle('active', mode === 'drawPoly');
+    finishBtn.classList.toggle('hidden', mode !== 'drawPoly');
 
     if (mode === 'initial') {
       $('pickBannerText').textContent = 'Haz clic en el mapa para fijar la Coordenada Inicial';
@@ -242,8 +265,27 @@
     } else if (mode === 'addPoint') {
       $('pickBannerText').textContent = 'Modo clic activo: haz clic en el mapa para agregar puntos';
       banner.classList.remove('hidden');
+    } else if (mode === 'drawPoly') {
+      $('pickBannerText').textContent = `Dibujando polígono (${state.points.length} pts) — Clic en vértices, doble clic o Terminar`;
+      banner.classList.remove('hidden');
+    } else if (mode === 'moveDest') {
+      $('pickBannerText').textContent = 'Haz clic en el mapa para elegir la nueva ubicación del vértice base';
+      banner.classList.remove('hidden');
     } else {
       banner.classList.add('hidden');
+    }
+  }
+
+  function finishDrawPolygon() {
+    setMapPickMode(null);
+    if (state.points.length >= 3) {
+      state.closed = true;
+      $('chkClosedPoly').checked = true;
+      refreshAll(true);
+      showToast(`Polígono cerrado con ${state.points.length} vértices — Cuadro de datos listo`);
+    } else if (state.points.length > 0) {
+      refreshAll(true);
+      showToast(`Trazo finalizado con ${state.points.length} punto(s)`);
     }
   }
 
@@ -304,10 +346,29 @@
 
     // Botones Topbar
     $('btnLoadDemo').addEventListener('click', loadPanamaDemo);
+    $('btnStartDrawPoly').addEventListener('click', () => {
+      if (mapEngine.pickMode === 'drawPoly') {
+        finishDrawPolygon();
+        return;
+      }
+      state.points = [];
+      state.curves = [];
+      state.auxLines = [];
+      state.lotDivision = null;
+      state.closureInfo = null;
+      state.closed = false;
+      $('chkClosedPoly').checked = false;
+      refreshAll(false);
+      setMapPickMode('drawPoly');
+      showToast('Haz clic sobre el mapa satelital para dibujar cada vértice del polígono');
+    });
+    $('btnFinishDraw').addEventListener('click', finishDrawPolygon);
+
     $('btnClearAll').addEventListener('click', () => {
       state.points = [];
       state.curves = [];
       state.auxLines = [];
+      state.lotDivision = null;
       state.closureInfo = null;
       $('bowditchResult').classList.add('hidden');
       refreshAll(false);
@@ -835,6 +896,192 @@
       showToast('Curvas limpiadas');
     });
 
+    // 9. Girar Polígono / Puntos
+    const executeRotate = (signedAngleDeg) => {
+      const pivot = getPointByIndex($('rotPivotSelect').value);
+      const box = $('resRotate');
+      if (!pivot || state.points.length < 2 || !Number.isFinite(signedAngleDeg)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Se necesitan al menos 2 puntos y un vértice pivote válido.';
+        box.classList.remove('hidden');
+        return;
+      }
+      state.points = C.rotatePoints(state.points, pivot, signedAngleDeg);
+      state.lotDivision = null;
+      refreshAll(false);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Pivote:</span><code>${pivot.id}</code></div>
+        <div class="result-kv"><span>Giro aplicado:</span><code>${signedAngleDeg > 0 ? '+' : ''}${signedAngleDeg.toFixed(2)}° (${signedAngleDeg >= 0 ? 'Horario' : 'Antihorario'})</code></div>
+      `;
+      box.classList.remove('hidden');
+      showToast(`Polígono girado ${signedAngleDeg > 0 ? '+' : ''}${signedAngleDeg.toFixed(2)}° desde ${pivot.id}`);
+    };
+
+    $('btnApplyRotate').addEventListener('click', () => {
+      const mag = parseFloat($('rotAngleDeg').value);
+      const dir = parseFloat($('rotDir').value) || 1;
+      if (!Number.isFinite(mag)) return;
+      executeRotate(mag * dir);
+    });
+
+    document.querySelectorAll('[data-rot]').forEach(btn => {
+      btn.addEventListener('click', () => executeRotate(parseFloat(btn.dataset.rot)));
+    });
+
+    // 10. Mover / Trasladar Todos los Puntos
+    $('btnMoveDelta').addEventListener('click', () => {
+      const de = parseFloat($('moveDe').value) || 0;
+      const dn = parseFloat($('moveDn').value) || 0;
+      const dz = parseFloat($('moveDz').value) || 0;
+      const box = $('resMove');
+      if (state.points.length === 0) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'No hay puntos para mover.';
+        box.classList.remove('hidden');
+        return;
+      }
+      state.points = C.translatePoints(state.points, de, dn, dz);
+      state.lotDivision = null;
+      refreshAll(true);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `<div class="result-kv"><span>Desplazamiento aplicado:</span><code>ΔE ${de.toFixed(3)}, ΔN ${dn.toFixed(3)}, ΔZ ${dz.toFixed(2)}</code></div>`;
+      box.classList.remove('hidden');
+      showToast(`Se movieron ${state.points.length} puntos`);
+    });
+
+    $('btnPickMoveDest').addEventListener('click', () => {
+      setMapPickMode(mapEngine.pickMode === 'moveDest' ? null : 'moveDest');
+    });
+
+    $('btnMoveToCoord').addEventListener('click', () => {
+      const base = getPointByIndex($('moveBasePt').value);
+      const destE = parseFloat($('moveDestE').value);
+      const destN = parseFloat($('moveDestN').value);
+      const box = $('resMove');
+      if (!base || !Number.isFinite(destE) || !Number.isFinite(destN)) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = 'Selecciona un vértice base y coordenadas destino válidas.';
+        box.classList.remove('hidden');
+        return;
+      }
+      const de = destE - base.e;
+      const dn = destN - base.n;
+      state.points = C.translatePoints(state.points, de, dn, 0);
+      state.lotDivision = null;
+      refreshAll(true);
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Vértice movido:</span><code>${base.id} → (${destE.toFixed(3)}, ${destN.toFixed(3)})</code></div>
+        <div class="result-kv"><span>Desplazamiento:</span><code>ΔE ${de.toFixed(3)} m, ΔN ${dn.toFixed(3)} m</code></div>
+      `;
+      box.classList.remove('hidden');
+      showToast(`Todos los puntos trasladados con base en ${base.id}`);
+    });
+
+    // 11. Dividir Polígono en Lotes Iguales
+    $('lotsDirMode').addEventListener('change', (e) => {
+      const v = e.target.value;
+      $('lotsSideWrap').classList.toggle('hidden', v !== 'side');
+      $('lotsCustomWrap').classList.toggle('hidden', v !== 'custom');
+    });
+
+    document.querySelectorAll('[data-lots]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $('lotsCount').value = btn.dataset.lots;
+        $('btnCalcLots').click();
+      });
+    });
+
+    $('btnCalcLots').addEventListener('click', () => {
+      const box = $('resLots');
+      const nLots = parseInt($('lotsCount').value, 10) || 2;
+      const mode = $('lotsDirMode').value;
+      let cutAz = 0;
+
+      if (mode === 'side') {
+        cutAz = parseFloat($('lotsSideSelect').value);
+        if (!Number.isFinite(cutAz)) cutAz = 0;
+      } else if (mode === 'ns') {
+        cutAz = 0;
+      } else if (mode === 'ew') {
+        cutAz = 90;
+      } else {
+        const parsed = C.parseDirectionString($('lotsCustomDir').value);
+        if (!parsed) {
+          box.className = 'result-box error mt-sm';
+          box.textContent = 'Rumbo o azimut personalizado inválido.';
+          box.classList.remove('hidden');
+          return;
+        }
+        cutAz = parsed.azimuth;
+      }
+
+      const res = C.subdividePolygonEqualArea(state.points, nLots, cutAz);
+      if (!res.ok) {
+        box.className = 'result-box error mt-sm';
+        box.textContent = res.error;
+        box.classList.remove('hidden');
+        return;
+      }
+
+      state.closed = true;
+      $('chkClosedPoly').checked = true;
+      state.lotDivision = res;
+      refreshAll(true);
+
+      const lotsHtml = res.lots.map((l, idx) => `
+        <div class="result-kv">
+          <span><strong>${l.name}</strong> (${l.areaHa.toFixed(4)} ha):</span>
+          <span>
+            <code>${l.areaM2.toFixed(2)} m²</code>
+            <button type="button" class="tbl-act-btn" data-load-lot="${idx}" title="Cargar solo este lote como poligonal activa">↗</button>
+          </span>
+        </div>
+      `).join('');
+
+      const cutsHtml = res.cutLines.map(cl => `
+        <div class="result-kv">
+          <span>Corte ${cl.index}:</span>
+          <code>${cl.bearing} · ${cl.dist.toFixed(2)} m</code>
+        </div>
+      `).join('');
+
+      box.className = 'result-box mt-sm';
+      box.innerHTML = `
+        <div class="result-kv"><span>Total / Cada Lote:</span><code>${res.totalAreaM2.toFixed(2)} / ${res.targetAreaM2.toFixed(2)} m²</code></div>
+        ${lotsHtml}
+        <hr class="sep" style="margin:6px 0;" />
+        ${cutsHtml}
+      `;
+      box.classList.remove('hidden');
+
+      box.querySelectorAll('[data-load-lot]').forEach(b => {
+        b.addEventListener('click', () => {
+          const lot = res.lots[Number(b.dataset.loadLot)];
+          if (!lot) return;
+          state.points = lot.points.map((p, i) => ({
+            ...p,
+            id: p.id || `V${i + 1}`
+          }));
+          state.lotDivision = null;
+          state.closed = true;
+          $('chkClosedPoly').checked = true;
+          refreshAll(true);
+          showToast(`${lot.name} cargado como poligonal activa (${lot.areaM2.toFixed(2)} m²)`);
+        });
+      });
+
+      showToast(`Polígono dividido en ${nLots} lotes iguales de ${res.targetAreaM2.toFixed(2)} m²`);
+    });
+
+    $('btnClearLots').addEventListener('click', () => {
+      state.lotDivision = null;
+      $('resLots').classList.add('hidden');
+      refreshAll(false);
+      showToast('División de lotes limpiada');
+    });
+
     $('btnClearAux').addEventListener('click', () => {
       state.auxLines = [];
       refreshAll(false);
@@ -1055,8 +1302,17 @@
         } else if (mode === 'addPoint') {
           addPoint({ id: nextAutoPointId(), e: coord.e, n: coord.n, z: 0, desc: 'MAPA' }, false);
           showToast(`Punto agregado en E ${coord.e.toFixed(2)}, N ${coord.n.toFixed(2)}`);
+        } else if (mode === 'drawPoly') {
+          addPoint({ id: nextAutoPointId(), e: coord.e, n: coord.n, z: 0, desc: 'DIBUJO MAPA' }, false);
+          $('pickBannerText').textContent = `Dibujando polígono (${state.points.length} pts) — Clic en vértices, doble clic o Terminar`;
+        } else if (mode === 'moveDest') {
+          $('moveDestE').value = coord.e.toFixed(3);
+          $('moveDestN').value = coord.n.toFixed(3);
+          setMapPickMode(null);
+          showToast(`Destino capturado: E ${coord.e.toFixed(3)}, N ${coord.n.toFixed(3)}. Pulsa "Trasladar Vértice a Destino".`);
         }
-      }
+      },
+      onFinishDraw: () => finishDrawPolygon()
     });
 
     bindEvents();

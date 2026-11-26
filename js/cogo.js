@@ -559,6 +559,235 @@
     };
   }
 
+  /**
+   * 11. ROTAR PUNTOS / POLÍGONO alrededor de un punto pivote
+   * Convención topográfica: angleDeg positivo = sentido horario (derecha), negativo = antihorario (izquierda).
+   */
+  function rotatePoints(points, pivot, angleDeg) {
+    const rad = (Number(angleDeg) || 0) * DEG2RAD;
+    const cosA = Math.cos(rad);
+    const sinA = Math.sin(rad);
+    const pe = pivot.e;
+    const pn = pivot.n;
+    return points.map(p => {
+      const dx = p.e - pe;
+      const dy = p.n - pn;
+      return {
+        ...p,
+        e: pe + dx * cosA + dy * sinA,
+        n: pn - dx * sinA + dy * cosA
+      };
+    });
+  }
+
+  /**
+   * 12. TRASLADAR (MOVER) TODOS LOS PUNTOS por (dE, dN, dZ)
+   */
+  function translatePoints(points, dE, dN, dZ = 0) {
+    const de = Number(dE) || 0;
+    const dn = Number(dN) || 0;
+    const dz = Number(dZ) || 0;
+    return points.map(p => ({
+      ...p,
+      e: p.e + de,
+      n: p.n + dn,
+      z: (Number(p.z) || 0) + dz
+    }));
+  }
+
+  /**
+   * Recorta un polígono con un semiplano usando Sutherland-Hodgman.
+   * La función proj(p) proyecta el punto sobre el eje perpendicular al corte.
+   */
+  function clipPolygonHalfPlane(poly, sCut, keepLessOrEqual, originE, originN, vx, vy) {
+    if (!poly || poly.length < 3) return [];
+    const proj = (p) => (p.e - originE) * vx + (p.n - originN) * vy;
+    const inside = (s) => keepLessOrEqual ? (s <= sCut + 1e-9) : (s >= sCut - 1e-9);
+
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const cur = poly[i];
+      const next = poly[(i + 1) % poly.length];
+      const sCur = proj(cur);
+      const sNext = proj(next);
+      const inCur = inside(sCur);
+      const inNext = inside(sNext);
+
+      if (inCur && inNext) {
+        out.push(next);
+      } else if (inCur && !inNext) {
+        const denom = sNext - sCur;
+        const t = Math.abs(denom) > 1e-12 ? (sCut - sCur) / denom : 0;
+        out.push({
+          id: '',
+          e: cur.e + t * (next.e - cur.e),
+          n: cur.n + t * (next.n - cur.n),
+          z: (Number(cur.z) || 0) + t * ((Number(next.z) || 0) - (Number(cur.z) || 0)),
+          desc: 'CORTE'
+        });
+      } else if (!inCur && inNext) {
+        const denom = sNext - sCur;
+        const t = Math.abs(denom) > 1e-12 ? (sCut - sCur) / denom : 0;
+        out.push({
+          id: '',
+          e: cur.e + t * (next.e - cur.e),
+          n: cur.n + t * (next.n - cur.n),
+          z: (Number(cur.z) || 0) + t * ((Number(next.z) || 0) - (Number(cur.z) || 0)),
+          desc: 'CORTE'
+        });
+        out.push(next);
+      }
+    }
+
+    // Limpiar vértices duplicados consecutivos
+    const clean = [];
+    for (const p of out) {
+      const prev = clean[clean.length - 1];
+      if (!prev || Math.hypot(p.e - prev.e, p.n - prev.n) > 1e-4) {
+        clean.push(p);
+      }
+    }
+    if (clean.length > 1 && Math.hypot(clean[0].e - clean[clean.length - 1].e, clean[0].n - clean[clean.length - 1].n) <= 1e-4) {
+      clean.pop();
+    }
+    return clean;
+  }
+
+  /**
+   * 13. DIVISIÓN DE POLÍGONO EN N LOTES DE ÁREA IGUAL
+   * @param {Array} points - Vértices del polígono cerrado
+   * @param {number} numLots - Cantidad de partes iguales (2..20)
+   * @param {number} cutAzimuthDeg - Azimut de las líneas divisorias (grados)
+   */
+  function subdividePolygonEqualArea(points, numLots, cutAzimuthDeg = 0) {
+    const N = Math.floor(Number(numLots) || 0);
+    if (!points || points.length < 3) {
+      return { ok: false, error: 'Se necesitan al menos 3 vértices para dividir un polígono.' };
+    }
+    if (N < 2 || N > 20) {
+      return { ok: false, error: 'El número de lotes debe estar entre 2 y 20.' };
+    }
+
+    const baseMetrics = polygonMetrics(points, true);
+    if (baseMetrics.areaM2 < 1e-4) {
+      return { ok: false, error: 'El polígono no tiene superficie válida.' };
+    }
+
+    const az = normAzimuth(cutAzimuthDeg);
+    const rad = az * DEG2RAD;
+    // u = dirección de la línea de corte; v = dirección perpendicular (barrido)
+    const ux = Math.sin(rad), uy = Math.cos(rad);
+    const vx = Math.cos(rad), vy = -Math.sin(rad);
+    const e0 = points[0].e;
+    const n0 = points[0].n;
+
+    let sMin = Infinity, sMax = -Infinity;
+    for (const p of points) {
+      const s = (p.e - e0) * vx + (p.n - n0) * vy;
+      if (s < sMin) sMin = s;
+      if (s > sMax) sMax = s;
+    }
+
+    if (sMax - sMin < 1e-6) {
+      return { ok: false, error: 'No se puede dividir en esa dirección.' };
+    }
+
+    const sCuts = [];
+    for (let k = 1; k < N; k++) {
+      const targetArea = (baseMetrics.areaM2 * k) / N;
+      let lo = sMin;
+      let hi = sMax;
+      for (let iter = 0; iter < 55; iter++) {
+        const mid = (lo + hi) / 2;
+        const leftPoly = clipPolygonHalfPlane(points, mid, true, e0, n0, vx, vy);
+        const area = polygonMetrics(leftPoly, true).areaM2;
+        if (area < targetArea) lo = mid;
+        else hi = mid;
+      }
+      sCuts.push((lo + hi) / 2);
+    }
+
+    // Construir cada lote
+    const lots = [];
+    for (let j = 0; j < N; j++) {
+      let poly = points.map(p => ({ ...p }));
+      if (j > 0) {
+        poly = clipPolygonHalfPlane(poly, sCuts[j - 1], false, e0, n0, vx, vy);
+      }
+      if (j < N - 1) {
+        poly = clipPolygonHalfPlane(poly, sCuts[j], true, e0, n0, vx, vy);
+      }
+      // Asignar IDs limpios a vértices nuevos de corte
+      let cIdx = 1;
+      poly = poly.map(p => ({
+        ...p,
+        id: p.id || `L${j + 1}_C${cIdx++}`
+      }));
+      const m = polygonMetrics(poly, true);
+      lots.push({
+        index: j + 1,
+        name: `Lote ${j + 1}`,
+        points: poly,
+        areaM2: m.areaM2,
+        areaHa: m.areaHa,
+        perimeter: m.perimeter,
+        centroid: m.centroid
+      });
+    }
+
+    // Extraer líneas de corte exactas (intersección de s = sCut con los bordes del polígono)
+    const cutLines = sCuts.map((sCut, idx) => {
+      const hits = [];
+      for (let i = 0; i < points.length; i++) {
+        const a = points[i];
+        const b = points[(i + 1) % points.length];
+        const sa = (a.e - e0) * vx + (a.n - n0) * vy - sCut;
+        const sb = (b.e - e0) * vx + (b.n - n0) * vy - sCut;
+        if ((sa <= 0 && sb >= 0) || (sa >= 0 && sb <= 0)) {
+          const denom = sb - sa;
+          if (Math.abs(denom) > 1e-12) {
+            const t = -sa / denom;
+            if (t >= -1e-7 && t <= 1 + 1e-7) {
+              const tc = Math.max(0, Math.min(1, t));
+              const pt = {
+                e: a.e + tc * (b.e - a.e),
+                n: a.n + tc * (b.n - a.n),
+                z: (Number(a.z) || 0) + tc * ((Number(b.z) || 0) - (Number(a.z) || 0)),
+                u: 0
+              };
+              pt.u = (pt.e - e0) * ux + (pt.n - n0) * uy;
+              if (!hits.some(h => Math.hypot(h.e - pt.e, h.n - pt.n) < 1e-3)) {
+                hits.push(pt);
+              }
+            }
+          }
+        }
+      }
+      hits.sort((a, b) => a.u - b.u);
+      const from = hits[0] || null;
+      const to = hits[hits.length - 1] || null;
+      const inv = (from && to) ? inverse(from, to) : null;
+      return {
+        index: idx + 1,
+        from,
+        to,
+        dist: inv ? inv.dist : 0,
+        bearing: inv ? inv.bearing : '-',
+        azimuthText: inv ? inv.azimuthText : '-'
+      };
+    }).filter(cl => cl.from && cl.to);
+
+    return {
+      ok: true,
+      numLots: N,
+      totalAreaM2: baseMetrics.areaM2,
+      targetAreaM2: baseMetrics.areaM2 / N,
+      cutAzimuth: az,
+      lots,
+      cutLines
+    };
+  }
+
   global.TopoCOGO = {
     normAzimuth,
     dmsToDeg,
@@ -577,6 +806,9 @@
     subdivideLine,
     simpleHorizontalCurve,
     polygonMetrics,
-    bowditchAdjust
+    bowditchAdjust,
+    rotatePoints,
+    translatePoints,
+    subdividePolygonEqualArea
   };
 })(window);
