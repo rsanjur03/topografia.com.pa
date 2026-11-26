@@ -294,13 +294,10 @@
     $('projectNameInput').value = 'Finca_Chiriqui_17N';
     state.projectName = 'Finca_Chiriqui_17N';
 
-    const p1 = { id: 'P1', e: 342165.000, n: 932500.000, z: 48.50, desc: 'MOJON 1 DAVID' };
-    const leg1 = C.direct(p1, C.bearingToAzimuth('N', 'E', C.dmsToDeg(62, 15, 20)), 58.40);
-    const p2 = { id: 'P2', e: leg1.e, n: leg1.n, z: 48.90, desc: 'LINDERO NE' };
-    const leg2 = C.direct(p2, C.bearingToAzimuth('S', 'E', C.dmsToDeg(28, 40, 10)), 42.75);
-    const p3 = { id: 'P3', e: leg2.e, n: leg2.n, z: 48.30, desc: 'ESQUINA SE' };
-    const leg3 = C.direct(p3, C.bearingToAzimuth('S', 'W', C.dmsToDeg(61, 50, 45)), 61.15);
-    const p4 = { id: 'P4', e: leg3.e, n: leg3.n, z: 48.10, desc: 'LINDERO SW' };
+    const p1 = { id: 'P1', e: 342527.835, n: 932597.318, z: 0.00, desc: 'MOJON 1' };
+    const p2 = { id: 'P2', e: 342604.985, n: 932534.131, z: 0.00, desc: 'MOJON 2' };
+    const p3 = { id: 'P3', e: 342643.398, n: 932579.153, z: 0.00, desc: 'MOJON 3' };
+    const p4 = { id: 'P4', e: 342564.762, n: 932639.872, z: 0.00, desc: 'MOJON 4' };
 
     state.points = [p1, p2, p3, p4];
     state.closed = true;
