@@ -20,19 +20,32 @@
     h: 1982 / 3179
   };
 
-  // 31 hojas oficiales IGN Tommy Guardia 1:25,000 de Chiriquí precargadas y georreferenciadas (WGS84)
+  // 44 hojas oficiales IGN Tommy Guardia 1:25,000 de Chiriquí precargadas y georreferenciadas (WGS84)
   const BUILTIN_SHEETS = [
-    // Bloque Este: David / Dolega / Boquete / Gualaca
+    // Bloque Este y Costa Sur: David / Dolega / Boquete / Gualaca / San Lorenzo / San Juan / Golfo de Chiriquí
     { id: 'builtin_3741_III_NW', code: '3741 III NW', name: 'David', scale: '1:25,000', url: 'assets/ign/3741_III_NW_DAVID.jpg', bounds: { south: 8.416667, north: 8.500000, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
     { id: 'builtin_3741_III_NE', code: '3741 III NE', name: 'Las Lomas / Chiriquí', scale: '1:25,000', url: 'assets/ign/3741_III_NE.jpg', bounds: { south: 8.416667, north: 8.500000, west: -82.375000, east: -82.250000 }, builtin: true, enabled: false },
+    { id: 'builtin_3741_III_SW', code: '3741 III SW', name: 'Pedregal / David Sur', scale: '1:25,000', url: 'assets/ign/3741_III_SW.jpg', bounds: { south: 8.333333, north: 8.416667, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
+    { id: 'builtin_3741_III_SE', code: '3741 III SE', name: 'Chiriquí', scale: '1:25,000', url: 'assets/ign/3741_III_SE.jpg', bounds: { south: 8.333333, north: 8.416667, west: -82.375000, east: -82.250000 }, builtin: true, enabled: false },
+    { id: 'builtin_3741_II_SW', code: '3741 II SW', name: 'Batipa / Chorchita', scale: '1:25,000', url: 'assets/ign/3741_II_SW.jpg', bounds: { south: 8.333333, north: 8.416667, west: -82.250000, east: -82.125000 }, builtin: true, enabled: false },
     { id: 'builtin_3741_IV_SW', code: '3741 IV SW', name: 'Dolega / Los Algarrobos', scale: '1:25,000', url: 'assets/ign/3741_IV_SW.jpg', bounds: { south: 8.500000, north: 8.583333, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
     { id: 'builtin_3741_IV_SE', code: '3741 IV SE', name: 'Gualaca Sur / Tinajas', scale: '1:25,000', url: 'assets/ign/3741_IV_SE.jpg', bounds: { south: 8.500000, north: 8.583333, west: -82.375000, east: -82.250000 }, builtin: true, enabled: false },
     { id: 'builtin_3741_IV_NW', code: '3741 IV NW', name: 'Potrerillos / Boquete Sur', scale: '1:25,000', url: 'assets/ign/3741_IV_NW.jpg', bounds: { south: 8.583333, north: 8.666667, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
     { id: 'builtin_3742_III_SW', code: '3742 III SW', name: 'Bajo Boquete / Alto Boquete', scale: '1:25,000', url: 'assets/ign/3742_III_SW.jpg', bounds: { south: 8.666667, north: 8.750000, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
     { id: 'builtin_3742_III_NW', code: '3742 III NW', name: 'Boquete Norte / Alto Quiel', scale: '1:25,000', url: 'assets/ign/3742_III_NW.jpg', bounds: { south: 8.750000, north: 8.833333, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_IV_NW', code: '3740 IV NW', name: 'Boca de San Pedro', scale: '1:25,000', url: 'assets/ign/3740_IV_NW.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.500000, east: -82.375000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_IV_NE', code: '3740 IV NE', name: 'Isla Mono', scale: '1:25,000', url: 'assets/ign/3740_IV_NE.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.375000, east: -82.250000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_IV_SE', code: '3740 IV SE', name: 'Isla Boca Brava', scale: '1:25,000', url: 'assets/ign/3740_IV_SE.jpg', bounds: { south: 8.166667, north: 8.250000, west: -82.375000, east: -82.250000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_I_NW', code: '3740 I NW', name: 'Horconcitos', scale: '1:25,000', url: 'assets/ign/3740_I_NW.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.250000, east: -82.125000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_I_SW', code: '3740 I SW', name: 'Boca Chica', scale: '1:25,000', url: 'assets/ign/3740_I_SW.jpg', bounds: { south: 8.166667, north: 8.250000, west: -82.250000, east: -82.125000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_I_NE', code: '3740 I NE', name: 'San Lorenzo', scale: '1:25,000', url: 'assets/ign/3740_I_NE.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.125000, east: -82.000000 }, builtin: true, enabled: false },
+    { id: 'builtin_3740_I_SE', code: '3740 I SE', name: 'Bahía de San Lorenzo', scale: '1:25,000', url: 'assets/ign/3740_I_SE.jpg', bounds: { south: 8.166667, north: 8.250000, west: -82.125000, east: -82.000000 }, builtin: true, enabled: false },
+    { id: 'builtin_3840_IV_NW', code: '3840 IV NW', name: 'San Juan', scale: '1:25,000', url: 'assets/ign/3840_IV_NW.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.000000, east: -81.875000 }, builtin: true, enabled: false },
+    { id: 'builtin_3840_IV_SW', code: '3840 IV SW', name: 'San Juan Sur / Las Lajas', scale: '1:25,000', url: 'assets/ign/3840_IV_SW.jpg', bounds: { south: 8.166667, north: 8.250000, west: -82.000000, east: -81.875000 }, builtin: true, enabled: false },
     // Bloque Centro: Alanje / Bugaba / Boquerón / Volcán Barú / Cerro Punta
     { id: 'builtin_3641_II_NE', code: '3641 II NE', name: 'San Pablo / Alanje Norte', scale: '1:25,000', url: 'assets/ign/3641_II_NE.jpg', bounds: { south: 8.416667, north: 8.500000, west: -82.625000, east: -82.500000 }, builtin: true, enabled: false },
     { id: 'builtin_3641_II_SE', code: '3641 II SE', name: 'Alanje / Guarumal', scale: '1:25,000', url: 'assets/ign/3641_II_SE.jpg', bounds: { south: 8.333333, north: 8.416667, west: -82.625000, east: -82.500000 }, builtin: true, enabled: false },
+    { id: 'builtin_3640_I_NE', code: '3640 I NE', name: 'Cacao', scale: '1:25,000', url: 'assets/ign/3640_I_NE.jpg', bounds: { south: 8.250000, north: 8.333333, west: -82.625000, east: -82.500000 }, builtin: true, enabled: false },
     { id: 'builtin_3641_II_SW', code: '3641 II SW', name: 'Divalá / Santo Tomás', scale: '1:25,000', url: 'assets/ign/3641_II_SW.jpg', bounds: { south: 8.333333, north: 8.416667, west: -82.750000, east: -82.625000 }, builtin: true, enabled: false },
     { id: 'builtin_3641_II_NW', code: '3641 II NW', name: 'Las Mercedes', scale: '1:25,000', url: 'assets/ign/3641_II_NW.jpg', bounds: { south: 8.416667, north: 8.500000, west: -82.750000, east: -82.625000 }, builtin: true, enabled: false },
     { id: 'builtin_3641_I_SE', code: '3641 I SE', name: 'Boquerón / Bugaba Este', scale: '1:25,000', url: 'assets/ign/3641_I_SE.jpg', bounds: { south: 8.500000, north: 8.583333, west: -82.625000, east: -82.500000 }, builtin: true, enabled: false },
@@ -60,17 +73,15 @@
 
   // Catálogo oficial de cuadrantes IGN 1:25,000 en Chiriquí (7.5' lon x 5' lat) para subir nuevas hojas
   const CHIRIQUI_QUADRANTS = [
-    { code: '3741 III SW', name: 'Pedregal / David Sur', south: 8.333333, north: 8.416667, west: -82.500000, east: -82.375000 },
-    { code: '3741 III SE', name: 'Chiriquí Sur / Chorcha', south: 8.333333, north: 8.416667, west: -82.375000, east: -82.250000 },
     { code: '3741 IV NE', name: 'Caldera / Gualaca', south: 8.583333, north: 8.666667, west: -82.375000, east: -82.250000 },
     { code: '3742 III SE', name: 'Caldera Norte / Hornito', south: 8.666667, north: 8.750000, west: -82.375000, east: -82.250000 },
     { code: '3742 III NE', name: 'Fortuna / Boquete NE', south: 8.750000, north: 8.833333, west: -82.375000, east: -82.250000 },
+    { code: '3741 II NW', name: 'Gualaca / San Lorenzo N', south: 8.416667, north: 8.500000, west: -82.250000, east: -82.125000 },
+    { code: '3741 I SW', name: 'Gualaca Este', south: 8.500000, north: 8.583333, west: -82.250000, east: -82.125000 },
+    { code: '3840 IV NE', name: 'San Félix / Las Lajas Este', south: 8.250000, north: 8.333333, west: -81.875000, east: -81.750000 },
+    { code: '3840 I NW', name: 'Tolé / Remedios', south: 8.250000, north: 8.333333, west: -81.750000, east: -81.625000 },
     { code: '3640 III NW', name: 'Limones / Punta Burica N', south: 8.083333, north: 8.166667, west: -83.000000, east: -82.875000 },
     { code: '3640 III SW', name: 'Punta Burica', south: 8.000000, north: 8.083333, west: -83.000000, east: -82.875000 },
-    { code: '3640 IV SE', name: 'Puerto Armuelles Sur', south: 8.166667, north: 8.250000, west: -82.875000, east: -82.750000 },
-    { code: '3741 II NW', name: 'San Lorenzo / Horconcitos', south: 8.416667, north: 8.500000, west: -82.250000, east: -82.125000 },
-    { code: '3741 II SW', name: 'Boca Chica / San Lorenzo S', south: 8.333333, north: 8.416667, west: -82.250000, east: -82.125000 },
-    { code: '3741 I SW', name: 'Gualaca Este', south: 8.500000, north: 8.583333, west: -82.250000, east: -82.125000 },
     ...BUILTIN_SHEETS.map(s => ({ code: s.code, name: s.name, south: s.bounds.south, north: s.bounds.north, west: s.bounds.west, east: s.bounds.east }))
   ];
 
