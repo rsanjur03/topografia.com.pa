@@ -34,9 +34,14 @@
 
         <div class="divider-v"></div>
 
-        <input id="projectNameInput" class="project-input" type="text" value="Finca_Chiriqui_17N" title="Nombre del proyecto (usado en DXF)" aria-label="Nombre del proyecto" />
+        <div class="segmented view-switcher" id="mainViewSwitcher" role="tablist">
+          <button type="button" class="seg-btn active" data-view="cogo" data-i18n="navCogo">COGO Gráfico</button>
+          <button type="button" class="seg-btn" data-view="calcs" data-i18n="navCalcs">Calculadoras</button>
+        </div>
 
-        <select id="crsSelect" class="crs-select" title="Sistema de Coordenadas">
+        <input id="projectNameInput" class="project-input cogo-only" type="text" value="Finca_Chiriqui_17N" title="Nombre del proyecto (usado en DXF)" aria-label="Nombre del proyecto" />
+
+        <select id="crsSelect" class="crs-select cogo-only" title="Sistema de Coordenadas">
           <option value="utm17N" data-i18n="crsUtm17" selected>UTM WGS84 · Zona 17N (Panamá)</option>
           <option value="utm18N" data-i18n="crsUtm18">UTM WGS84 · Zona 18N (Panamá Este / Darién)</option>
           <option value="local" data-i18n="crsLocal">Sistema Local (Plano CAD)</option>
@@ -44,27 +49,27 @@
       </div>
 
       <div class="topbar-actions">
-        <button id="btnLoadDemo" class="btn btn-ghost" title="Cargar poligonal de ejemplo en David, Chiriquí">
+        <button id="btnLoadDemo" class="btn btn-ghost cogo-only" title="Cargar poligonal de ejemplo en David, Chiriquí">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 18 21 6 21 2 8.5 12 2"/></svg>
           <span data-i18n="btnDemo">Ejemplo</span>
         </button>
-        <button id="btnStartDrawPoly" class="btn btn-secondary" title="Dibujar un polígono directamente sobre la imagen satelital o mapa para obtener sus datos de campo">
+        <button id="btnStartDrawPoly" class="btn btn-secondary cogo-only" title="Dibujar un polígono directamente sobre la imagen satelital o mapa para obtener sus datos de campo">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/></svg>
           <span data-i18n="btnDrawMap">Dibujar en Mapa</span>
         </button>
-        <button id="btnToggleEditMode" class="btn btn-ghost" title="Activar modo edición para arrastrar y mover vértices sobre el mapa">
+        <button id="btnToggleEditMode" class="btn btn-ghost cogo-only" title="Activar modo edición para arrastrar y mover vértices sobre el mapa">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="5 9 2 12 5 15"/><polyline points="9 5 12 2 15 5"/><polyline points="15 19 12 22 9 19"/><polyline points="19 9 22 12 19 15"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
           <span data-i18n="btnEditPts">Editar Puntos</span>
         </button>
-        <button id="btnOpenImport" class="btn btn-secondary" title="Importar archivo CSV o TXT">
+        <button id="btnOpenImport" class="btn btn-secondary cogo-only" title="Importar archivo CSV o TXT">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <span data-i18n="btnImport">Importar CSV/TXT</span>
         </button>
-        <button id="btnOpenDxf" class="btn btn-primary" title="Generar Plano ANATI (DXF con Layout y PDF Vectorial)">
+        <button id="btnOpenDxf" class="btn btn-primary cogo-only" title="Generar Plano ANATI (DXF con Layout y PDF Vectorial)">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span data-i18n="btnExportDxf">Plano DXF / PDF</span>
         </button>
-        <button id="btnClearAll" class="icon-btn danger-hover" title="Limpiar proyecto" aria-label="Limpiar proyecto">
+        <button id="btnClearAll" class="icon-btn danger-hover cogo-only" title="Limpiar proyecto" aria-label="Limpiar proyecto">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
         </button>
         <button id="btnLangToggle" class="icon-btn lang-btn" title="Switch interface to English" aria-label="Cambiar idioma">EN</button>
@@ -74,8 +79,8 @@
       </div>
     </header>
 
-    <!-- ==================== CUERPO PRINCIPAL ==================== -->
-    <div class="workspace">
+    <!-- ==================== CUERPO PRINCIPAL: VISTA COGO ==================== -->
+    <div id="cogoWorkspace" class="workspace">
       <!-- PANEL LATERAL IZQUIERDO -->
       <aside id="sidebar" class="sidebar">
         <!-- Pestañas principales -->
@@ -737,6 +742,466 @@
         </div>
       </main>
     </div>
+
+    <!-- ==================== VISTA 2: CALCULADORAS GEODÉSICAS Y GNSS ==================== -->
+    <div id="calculatorsView" class="calcs-workspace hidden">
+      <aside class="calcs-nav">
+        <div class="calcs-nav-title" data-i18n="calcsMenuTitle">Suite Geodésica y GNSS</div>
+        <button class="calc-nav-btn active" data-calc="utm-geo">
+          <span class="calc-icon">🌐</span>
+          <span>
+            <strong data-i18n="calc1Title">UTM ↔ Geográficas</strong>
+            <small data-i18n="calc1Sub">WGS84 / NAD27 · Escala k y γ</small>
+          </span>
+        </button>
+        <button class="calc-nav-btn" data-calc="ecef-utm">
+          <span class="calc-icon">🛰️</span>
+          <span>
+            <strong data-i18n="calc2Title">Geocéntricas ↔ UTM</strong>
+            <small data-i18n="calc2Sub">ECEF (X, Y, Z) ↔ E, N, h</small>
+          </span>
+        </button>
+        <button class="calc-nav-btn" data-calc="nad27-wgs84">
+          <span class="calc-icon">🧭</span>
+          <span>
+            <strong data-i18n="calc3Title">NAD27 ↔ WGS84</strong>
+            <small data-i18n="calc3Sub">Panamá · Zona del Canal · 3D</small>
+          </span>
+        </button>
+        <button class="calc-nav-btn" data-calc="dms-dd">
+          <span class="calc-icon">📐</span>
+          <span>
+            <strong data-i18n="calc4Title">Grados Decimales ↔ G°M'S"</strong>
+            <small data-i18n="calc4Sub">DD · DMS · DDM · Rad · Gon</small>
+          </span>
+        </button>
+        <button class="calc-nav-btn" data-calc="gps-cal">
+          <span class="calc-icon">📅</span>
+          <span>
+            <strong data-i18n="calc5Title">Calendario GPS (DOY / Week)</strong>
+            <small data-i18n="calc5Sub">GPS Week · DOY · SOW · RINEX</small>
+          </span>
+        </button>
+      </aside>
+
+      <section class="calcs-main">
+        <!-- ===== CALCULADORA 1: UTM <-> GEOGRAFICAS ===== -->
+        <div id="calc-utm-geo" class="calc-section active">
+          <div class="calc-header">
+            <h1 data-i18n="calc1Head">Conversor UTM ↔ Geográficas (Lat / Lon)</h1>
+            <p data-i18n="calc1Desc">Transformación precisa Transverse Mercator para Panamá (Zonas 17N / 18N) y cualquier zona UTM del mundo, incluyendo factor de escala puntual (k) y convergencia de meridianos (γ).</p>
+          </div>
+          <div class="calc-grid-2">
+            <!-- UTM -> Geo -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="utmToGeoTitle">UTM → Geográficas (Lat, Lon)</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span data-i18n="lblEast">Este (X) [m]</span>
+                  <input id="c1UtmE" type="number" step="0.001" value="342527.835" />
+                </label>
+                <label class="field">
+                  <span data-i18n="lblNorth">Norte (Y) [m]</span>
+                  <input id="c1UtmN" type="number" step="0.001" value="932597.318" />
+                </label>
+              </div>
+              <div class="grid-3 mt-sm">
+                <label class="field">
+                  <span data-i18n="lblUtmZone">Zona UTM</span>
+                  <input id="c1UtmZone" type="number" min="1" max="60" value="17" />
+                </label>
+                <label class="field">
+                  <span data-i18n="lblHemi">Hemisferio</span>
+                  <select id="c1UtmHemi">
+                    <option value="N" selected>Norte (N)</option>
+                    <option value="S">Sur (S)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="lblEllipsoid">Elipsoide</span>
+                  <select id="c1UtmEll">
+                    <option value="WGS84" selected>WGS84</option>
+                    <option value="CLARKE1866">Clarke 1866 (NAD27)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="row-actions mt-sm">
+                <button id="btnC1UtmToGeo" class="btn btn-primary btn-full" data-i18n="btnConvert">Convertir</button>
+                <button id="btnC1PlotUtm" class="btn btn-secondary" title="Ver este punto en el mapa satelital COGO">📍 Mapa</button>
+              </div>
+              <div id="resC1UtmToGeo" class="result-box mt-sm"></div>
+            </div>
+
+            <!-- Geo -> UTM -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="geoToUtmTitle">Geográficas (Lat, Lon) → UTM</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span data-i18n="lblLatDD">Latitud (DD, +N / −S)</span>
+                  <input id="c1GeoLat" type="number" step="0.000001" value="8.43428246" />
+                </label>
+                <label class="field">
+                  <span data-i18n="lblLonDD">Longitud (DD, +E / −W)</span>
+                  <input id="c1GeoLon" type="number" step="0.000001" value="-82.43038908" />
+                </label>
+              </div>
+              <div class="grid-2 mt-sm">
+                <label class="field">
+                  <span data-i18n="lblForcedZone">Zona UTM</span>
+                  <select id="c1GeoZone">
+                    <option value="auto" selected>Automática</option>
+                    <option value="17">Zona 17 (Panamá / Chiriquí)</option>
+                    <option value="18">Zona 18 (Panamá Este / Darién)</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span data-i18n="lblEllipsoid">Elipsoide</span>
+                  <select id="c1GeoEll">
+                    <option value="WGS84" selected>WGS84</option>
+                    <option value="CLARKE1866">Clarke 1866 (NAD27)</option>
+                  </select>
+                </label>
+              </div>
+              <div class="row-actions mt-sm">
+                <button id="btnC1GeoToUtm" class="btn btn-primary btn-full" data-i18n="btnConvert">Convertir</button>
+                <button id="btnC1PlotGeo" class="btn btn-secondary" title="Ver este punto en el mapa satelital COGO">📍 Mapa</button>
+              </div>
+              <div id="resC1GeoToUtm" class="result-box mt-sm"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 2: GEOCENTRICAS ECEF <-> UTM ===== -->
+        <div id="calc-ecef-utm" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc2Head">Geocéntricas ECEF (X, Y, Z) ↔ UTM</h1>
+            <p data-i18n="calc2Desc">Conversión exacta entre coordenadas cartesianas geocéntricas WGS84 (usadas en archivos RINEX, CORS y post-proceso GNSS) y coordenadas proyectadas UTM + altura elipsoidal (h).</p>
+          </div>
+          <div class="calc-grid-2">
+            <!-- UTM -> ECEF -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="utmToEcefTitle">UTM (E, N, h) → Geocéntricas (X, Y, Z)</h3>
+              </div>
+              <div class="grid-3">
+                <label class="field">
+                  <span>Este (E) [m]</span>
+                  <input id="c2UtmE" type="number" step="0.001" value="342527.835" />
+                </label>
+                <label class="field">
+                  <span>Norte (N) [m]</span>
+                  <input id="c2UtmN" type="number" step="0.001" value="932597.318" />
+                </label>
+                <label class="field">
+                  <span>Altura Elip. h [m]</span>
+                  <input id="c2UtmH" type="number" step="0.001" value="48.500" />
+                </label>
+              </div>
+              <div class="grid-2 mt-sm">
+                <label class="field">
+                  <span data-i18n="lblUtmZone">Zona UTM</span>
+                  <input id="c2UtmZone" type="number" min="1" max="60" value="17" />
+                </label>
+                <label class="field">
+                  <span data-i18n="lblHemi">Hemisferio</span>
+                  <select id="c2UtmHemi">
+                    <option value="N" selected>Norte (N)</option>
+                    <option value="S">Sur (S)</option>
+                  </select>
+                </label>
+              </div>
+              <button id="btnC2UtmToEcef" class="btn btn-primary btn-full mt-sm" data-i18n="btnConvert">Convertir</button>
+              <div id="resC2UtmToEcef" class="result-box mt-sm"></div>
+            </div>
+
+            <!-- ECEF -> UTM -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="ecefToUtmTitle">Geocéntricas (X, Y, Z) → UTM (E, N, h)</h3>
+              </div>
+              <div class="grid-3">
+                <label class="field">
+                  <span>X ECEF [m]</span>
+                  <input id="c2EcefX" type="number" step="0.001" value="831175.320" />
+                </label>
+                <label class="field">
+                  <span>Y ECEF [m]</span>
+                  <input id="c2EcefY" type="number" step="0.001" value="-6254672.977" />
+                </label>
+                <label class="field">
+                  <span>Z ECEF [m]</span>
+                  <input id="c2EcefZ" type="number" step="0.001" value="929324.127" />
+                </label>
+              </div>
+              <label class="field mt-sm">
+                <span data-i18n="lblForcedZone">Zona UTM destino</span>
+                <select id="c2EcefZone">
+                  <option value="auto" selected>Automática</option>
+                  <option value="17">Zona 17 (Panamá / Chiriquí)</option>
+                  <option value="18">Zona 18 (Panamá Este / Darién)</option>
+                </select>
+              </label>
+              <div class="row-actions mt-sm">
+                <button id="btnC2EcefToUtm" class="btn btn-primary btn-full" data-i18n="btnConvert">Convertir</button>
+                <button id="btnC2PlotEcef" class="btn btn-secondary" title="Ver resultado en mapa COGO">📍 Mapa</button>
+              </div>
+              <div id="resC2EcefToUtm" class="result-box mt-sm"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 3: NAD27 <-> WGS84 ===== -->
+        <div id="calc-nad27-wgs84" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc3Head">Transformación de Datum NAD27 ↔ WGS84</h1>
+            <p data-i18n="calc3Desc">Transformación geocéntrica 3D (Clarke 1866 ↔ WGS84) con parámetros oficiales NIMA/DMA para Panamá, Zona del Canal y Centroamérica, o parámetros personalizados.</p>
+          </div>
+
+          <div class="card calc-card">
+            <div class="grid-3">
+              <label class="field">
+                <span data-i18n="lblDirection">Dirección</span>
+                <select id="c3Direction">
+                  <option value="nad27_to_wgs84" selected>NAD27 → WGS84</option>
+                  <option value="wgs84_to_nad27">WGS84 → NAD27</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblCoordType">Tipo de Coordenada</span>
+                <select id="c3CoordType">
+                  <option value="utm" selected>UTM (Este, Norte)</option>
+                  <option value="geo">Geográficas (Lat, Lon)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblDatumPreset">Región / Parámetros</span>
+                <select id="c3Preset">
+                  <option value="panama" selected>Panamá / Centroamérica (EPSG:1171: 0, +125, +194)</option>
+                  <option value="canal">Zona del Canal Panamá (EPSG:1170: 0, +125, +201)</option>
+                  <option value="conus">Estados Unidos CONUS (-8, +160, +176)</option>
+                  <option value="custom">Personalizado (ΔX, ΔY, ΔZ)</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="c3CustomShiftRow" class="grid-3 mt-sm hidden">
+              <label class="field">
+                <span>ΔX (NAD27→WGS84) [m]</span>
+                <input id="c3Dx" type="number" step="0.01" value="0" />
+              </label>
+              <label class="field">
+                <span>ΔY (NAD27→WGS84) [m]</span>
+                <input id="c3Dy" type="number" step="0.01" value="125" />
+              </label>
+              <label class="field">
+                <span>ΔZ (NAD27→WGS84) [m]</span>
+                <input id="c3Dz" type="number" step="0.01" value="194" />
+              </label>
+            </div>
+
+            <!-- Entrada UTM -->
+            <div id="c3UtmInputs" class="grid-4 mt-sm">
+              <label class="field">
+                <span>Este (X) [m]</span>
+                <input id="c3UtmE" type="number" step="0.001" value="342525.000" />
+              </label>
+              <label class="field">
+                <span>Norte (Y) [m]</span>
+                <input id="c3UtmN" type="number" step="0.001" value="932385.000" />
+              </label>
+              <label class="field">
+                <span>Zona UTM</span>
+                <input id="c3UtmZone" type="number" min="1" max="60" value="17" />
+              </label>
+              <label class="field">
+                <span>Hemisferio</span>
+                <select id="c3UtmHemi">
+                  <option value="N" selected>Norte (N)</option>
+                  <option value="S">Sur (S)</option>
+                </select>
+              </label>
+            </div>
+
+            <!-- Entrada Geo -->
+            <div id="c3GeoInputs" class="grid-3 mt-sm hidden">
+              <label class="field">
+                <span>Latitud (DD)</span>
+                <input id="c3GeoLat" type="number" step="0.000001" value="8.432300" />
+              </label>
+              <label class="field">
+                <span>Longitud (DD)</span>
+                <input id="c3GeoLon" type="number" step="0.000001" value="-82.430000" />
+              </label>
+              <label class="field">
+                <span>Altura h [m]</span>
+                <input id="c3GeoH" type="number" step="0.01" value="0" />
+              </label>
+            </div>
+
+            <div class="row-actions mt-sm">
+              <button id="btnC3Transform" class="btn btn-primary btn-full" data-i18n="btnTransformDatum">Transformar Datum</button>
+              <button id="btnC3PlotWgs" class="btn btn-secondary" title="Ver punto WGS84 en el mapa COGO">📍 Ver WGS84 en Mapa</button>
+            </div>
+
+            <div id="resC3Datum" class="result-box mt-sm"></div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 4: GRADOS DECIMALES <-> G° M' S" ===== -->
+        <div id="calc-dms-dd" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc4Head">Conversor de Grados Decimales ↔ Grados, Minutos y Segundos</h1>
+            <p data-i18n="calc4Desc">Convierte al instante entre Grados Decimales (DD), Sexagesimales (G° M' S"), Grados y Minutos Decimales (DDM), Radianes (rad) y Gradianes (gon).</p>
+          </div>
+
+          <div class="calc-grid-2">
+            <!-- DD -> DMS -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="ddToDmsTitle">Grados Decimales (DD) → G° M' S"</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span>Latitud o Ángulo 1 (DD)</span>
+                  <input id="c4DdLat" type="number" step="0.0000001" value="8.434232" />
+                </label>
+                <label class="field">
+                  <span>Longitud o Ángulo 2 (DD, opc.)</span>
+                  <input id="c4DdLon" type="number" step="0.0000001" value="-82.430037" />
+                </label>
+              </div>
+              <button id="btnC4DdToDms" class="btn btn-primary btn-full mt-sm" data-i18n="btnConvert">Convertir</button>
+              <div id="resC4DdToDms" class="result-box mt-sm"></div>
+            </div>
+
+            <!-- DMS -> DD -->
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="dmsToDdTitle">G° M' S" → Grados Decimales (DD)</h3>
+              </div>
+              <label class="field">
+                <span>Latitud / Ángulo 1 (G° M' S")</span>
+                <div class="dms-bearing-row">
+                  <select id="c4LatHemi">
+                    <option value="N" selected>N (+)</option>
+                    <option value="S">S (−)</option>
+                  </select>
+                  <input id="c4LatD" type="number" step="1" value="8" placeholder="G°" />
+                  <input id="c4LatM" type="number" step="1" min="0" max="59" value="26" placeholder="M'" />
+                  <input id="c4LatS" type="number" step="0.0001" min="0" max="59.9999" value="3.2352" placeholder='S"' />
+                  <span class="unit-tag">LAT</span>
+                </div>
+              </label>
+              <label class="field mt-sm">
+                <span>Longitud / Ángulo 2 (G° M' S", opcional)</span>
+                <div class="dms-bearing-row">
+                  <select id="c4LonHemi">
+                    <option value="W" selected>W (−)</option>
+                    <option value="E">E (+)</option>
+                  </select>
+                  <input id="c4LonD" type="number" step="1" value="82" placeholder="G°" />
+                  <input id="c4LonM" type="number" step="1" min="0" max="59" value="25" placeholder="M'" />
+                  <input id="c4LonS" type="number" step="0.0001" min="0" max="59.9999" value="48.1332" placeholder='S"' />
+                  <span class="unit-tag">LON</span>
+                </div>
+              </label>
+              <button id="btnC4DmsToDd" class="btn btn-primary btn-full mt-sm" data-i18n="btnConvert">Convertir</button>
+              <div id="resC4DmsToDd" class="result-box mt-sm"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== CALCULADORA 5: CALENDARIO GPS (DOY / GPS WEEK) ===== -->
+        <div id="calc-gps-cal" class="calc-section">
+          <div class="calc-header">
+            <h1 data-i18n="calc5Head">Calendario GPS / GNSS (DOY y Semana GPS)</h1>
+            <p data-i18n="calc5Desc">Convierte fechas a Semana GPS, Día del Año (DOY), Día y Segundos de la Semana GPS (DOW / SOW), Fecha Juliana (JD / MJD) y nombres de archivos RINEX / efemérides IGS SP3.</p>
+          </div>
+
+          <!-- Controles de entrada (Fecha | Año+DOY | Semana+DOW) -->
+          <div class="calc-grid-3">
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="gpsFromDate">1. Desde Fecha Calendario</h3>
+                <button id="btnGpsToday" type="button" class="chip-btn" data-i18n="btnToday">Hoy</button>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span>Fecha (UTC)</span>
+                  <input id="c5Date" type="date" value="2026-11-26" />
+                </label>
+                <label class="field">
+                  <span>Hora (HH:MM:SS)</span>
+                  <input id="c5Time" type="text" value="12:00:00" placeholder="00:00:00" />
+                </label>
+              </div>
+              <button id="btnC5FromDate" class="btn btn-primary btn-full mt-sm" data-i18n="btnCalcGps">Calcular GPS</button>
+            </div>
+
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="gpsFromDoy">2. Desde Año + DOY</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span>Año</span>
+                  <input id="c5DoyYear" type="number" min="1980" max="2099" value="2026" />
+                </label>
+                <label class="field">
+                  <span>DOY (1–366)</span>
+                  <input id="c5DoyVal" type="number" min="1" max="366" value="330" />
+                </label>
+              </div>
+              <button id="btnC5FromDoy" class="btn btn-secondary btn-full mt-sm" data-i18n="btnConvertDate">Convertir a Fecha</button>
+            </div>
+
+            <div class="card calc-card">
+              <div class="card-header">
+                <h3 data-i18n="gpsFromWeek">3. Desde Semana GPS + DOW</h3>
+              </div>
+              <div class="grid-2">
+                <label class="field">
+                  <span>Semana GPS</span>
+                  <input id="c5WeekVal" type="number" min="0" max="9999" value="2446" />
+                </label>
+                <label class="field">
+                  <span>DOW (0=Dom..6=Sáb)</span>
+                  <select id="c5DowVal">
+                    <option value="0">0 — Dom / Sun</option>
+                    <option value="1">1 — Lun / Mon</option>
+                    <option value="2">2 — Mar / Tue</option>
+                    <option value="3">3 — Mié / Wed</option>
+                    <option value="4" selected>4 — Jue / Thu</option>
+                    <option value="5">5 — Vie / Fri</option>
+                    <option value="6">6 — Sáb / Sat</option>
+                  </select>
+                </label>
+              </div>
+              <button id="btnC5FromWeek" class="btn btn-secondary btn-full mt-sm" data-i18n="btnConvertDate">Convertir a Fecha</button>
+            </div>
+          </div>
+
+          <!-- Tarjetas KPI de resultados GPS -->
+          <div class="gps-kpi-grid mt-sm" id="gpsKpiGrid"></div>
+
+          <!-- Calendario Mensual GPS Interactivo -->
+          <div class="card calc-card mt-sm">
+            <div class="card-header">
+              <h3 id="gpsCalMonthTitle">Calendario GPS Mensual (DOY / Semana GPS)</h3>
+              <div class="row-actions">
+                <button id="btnGpsPrevMonth" type="button" class="chip-btn" data-i18n="btnPrevMonth">◀ Anterior</button>
+                <button id="btnGpsNextMonth" type="button" class="chip-btn" data-i18n="btnNextMonth">Siguiente ▶</button>
+              </div>
+            </div>
+            <div id="gpsMonthCalendar" class="gps-calendar-grid mt-xs"></div>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <!-- ==================== MODAL IMPORTAR CSV / TXT ==================== -->
@@ -1027,6 +1492,7 @@
   <script src="js/io.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/map.js"></script>
+  <script src="js/calculators.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

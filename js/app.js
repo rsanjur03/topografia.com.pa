@@ -438,6 +438,9 @@
     $('btnLangToggle').addEventListener('click', () => {
       if (!global.TopoI18n) return;
       const lang = global.TopoI18n.toggleLanguage();
+      if (global.TopoCalculators && global.TopoCalculators.refreshGpsLanguage) {
+        global.TopoCalculators.refreshGpsLanguage();
+      }
       showToast(lang === 'en' ? 'Language switched to English' : 'Idioma cambiado a Español');
     });
 
@@ -1560,6 +1563,29 @@
     bindEvents();
     if (global.TopoI18n) global.TopoI18n.applyLanguage();
     loadPanamaDemo();
+
+    // Puente para que las Calculadoras Geodésicas puedan graficar puntos directo en el mapa COGO
+    global.TopoAppBridge = {
+      onReturnToCogo: () => {
+        setTimeout(() => { if (mapEngine) mapEngine.invalidateSize(); }, 60);
+      },
+      plotPointOnMap: (e, n, z = 0, zone = 17, hemi = 'N', label = 'CALC') => {
+        state.crsMode = 'utm';
+        state.utmZone = Number(zone) || 17;
+        state.utmHemi = hemi || 'N';
+        state.crsLabel = `UTM WGS84 ZONA ${state.utmZone}${state.utmHemi}`;
+        if (state.utmZone === 17) $('crsSelect').value = 'utm17N';
+        else if (state.utmZone === 18) $('crsSelect').value = 'utm18N';
+        $('hudCrsBadge').textContent = `UTM WGS84 · ${state.utmZone}${state.utmHemi}`;
+        mapEngine.setCRS('utm', state.utmZone, state.utmHemi);
+        addPoint({ id: label, e, n, z, desc: 'CALCULADORA' }, false);
+        setTimeout(() => {
+          mapEngine.invalidateSize();
+          mapEngine.focusPoint({ e, n });
+        }, 120);
+        showToast(`Punto ${label} ubicado en mapa: E ${e.toFixed(3)}, N ${n.toFixed(3)}`);
+      }
+    };
   }
 
   document.addEventListener('DOMContentLoaded', init);
