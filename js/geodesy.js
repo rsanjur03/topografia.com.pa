@@ -430,6 +430,59 @@
     };
   }
 
+  /**
+   * Escala una lista de puntos { id, e, n, z, desc } entre Cuadrícula UTM y Terreno
+   * usando un Punto Base (pivote) y el Factor de Escala Combinado (CSF).
+   * direction: 'grid_to_ground' (UTM -> Terreno para Estación Total, ÷ CSF)
+   *         | 'ground_to_grid' (Terreno -> UTM, × CSF)
+   */
+  function scalePointsByCsf(points, csf, direction = 'grid_to_ground', anchor = null) {
+    if (!points || points.length === 0 || !Number.isFinite(csf) || csf <= 0) {
+      return { ok: false, error: 'Se requieren puntos válidos y un CSF > 0.' };
+    }
+    const factor = direction === 'grid_to_ground' ? (1 / csf) : csf;
+    const base = anchor || { e: points[0].e, n: points[0].n };
+
+    let maxShift = 0;
+    const scaled = points.map((p) => {
+      const eOut = base.e + (p.e - base.e) * factor;
+      const nOut = base.n + (p.n - base.n) * factor;
+      const dE = eOut - p.e;
+      const dN = nOut - p.n;
+      const dH = Math.hypot(dE, dN);
+      if (dH > maxShift) maxShift = dH;
+      return {
+        ...p,
+        origE: p.e,
+        origN: p.n,
+        e: eOut,
+        n: nOut,
+        dE,
+        dN,
+        dH
+      };
+    });
+
+    // Comparación de distancia/perímetro total antes y después
+    let distBefore = 0, distAfter = 0;
+    for (let i = 1; i < points.length; i++) {
+      distBefore += Math.hypot(points[i].e - points[i - 1].e, points[i].n - points[i - 1].n);
+      distAfter += Math.hypot(scaled[i].e - scaled[i - 1].e, scaled[i].n - scaled[i - 1].n);
+    }
+
+    return {
+      ok: true,
+      direction,
+      csf,
+      factor,
+      anchor: base,
+      maxShiftM: maxShift,
+      distBefore,
+      distAfter,
+      points: scaled
+    };
+  }
+
   function isPlausibleUtm(easting, northing) {
     return (
       Number.isFinite(easting) &&
@@ -456,6 +509,7 @@
     doyToDate,
     gpsWeekToDate,
     combinedScaleFactor,
+    scalePointsByCsf,
     isPlausibleUtm
   };
 })(window);

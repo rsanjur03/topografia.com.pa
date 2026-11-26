@@ -1715,6 +1715,7 @@
 
     // Puente para que las Calculadoras Geodésicas puedan graficar puntos directo en el mapa COGO
     global.TopoAppBridge = {
+      getCogoPoints: () => state.points.map(p => ({ ...p })),
       onReturnToCogo: () => {
         setTimeout(() => { if (mapEngine) mapEngine.invalidateSize(); }, 60);
       },

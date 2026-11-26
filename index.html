@@ -1329,6 +1329,75 @@
               <div id="resC7Area" class="result-box mt-sm"></div>
             </div>
           </div>
+
+          <!-- Card 3: Conversión Masiva de Puntos para Replanteo con Estación Total -->
+          <div class="card calc-card mt-sm">
+            <div class="card-header">
+              <h3 data-i18n="c7BatchTitle">4. Corregir Puntos para Replanteo con Estación Total (CSV / TXT)</h3>
+              <div class="row-actions">
+                <button id="btnC7PullCogo" type="button" class="chip-btn" data-i18n="btnPullCogo">📥 Traer de COGO</button>
+                <button id="btnC7Upload" type="button" class="chip-btn" data-i18n="btnUploadCsv">📂 Subir CSV/TXT</button>
+                <input id="c7FileInput" type="file" accept=".csv,.txt,.xyz,.pts,.asc" hidden />
+              </div>
+            </div>
+
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span data-i18n="lblDirection">Dirección de Escala</span>
+                <select id="c7BatchDir">
+                  <option value="grid_to_ground" selected>UTM → Terreno (Estación Total · ÷ CSF)</option>
+                  <option value="ground_to_grid">Terreno → UTM (Cuadrícula · × CSF)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblAnchorMode">Punto Base / Pivote (Fijo)</span>
+                <select id="c7AnchorMode">
+                  <option value="first" selected>Primer punto de la lista (Estación base)</option>
+                  <option value="centroid">Centroide de los puntos</option>
+                  <option value="section1">Coordenada de Sección 1</option>
+                  <option value="origin">Origen (0, 0)</option>
+                </select>
+              </label>
+              <label class="field">
+                <span data-i18n="lblColFormat">Formato de Columnas</span>
+                <select id="c7BatchFormat">
+                  <option value="PNEZD" selected>P, N, E, Z, D</option>
+                  <option value="PENZD">P, E, N, Z, D</option>
+                  <option value="NEZ">N, E, Z</option>
+                  <option value="ENZ">E, N, Z</option>
+                  <option value="NE">N, E</option>
+                  <option value="EN">E, N</option>
+                </select>
+              </label>
+            </div>
+
+            <textarea id="c7PointsText" class="helmert-textarea mt-sm" rows="4" placeholder="Punto,Norte,Este,Cota,Descripcion&#10;P1,932597.318,342527.835,48.50,MOJON 1"></textarea>
+
+            <div class="row-actions mt-sm" style="flex-wrap:wrap;">
+              <button id="btnC7ScalePts" type="button" class="btn btn-primary" data-i18n="btnC7ScalePts">Corregir Puntos con CSF</button>
+              <button id="btnC7DownloadCsv" type="button" class="btn btn-secondary" data-i18n="btnC7DownloadCsv">Descargar CSV (Estación Total)</button>
+              <button id="btnC7CopyPts" type="button" class="btn btn-ghost" data-i18n="btnCopy">📋 Copiar</button>
+            </div>
+
+            <div id="resC7BatchSummary" class="result-box mt-sm"></div>
+
+            <div class="table-wrap mt-sm" style="max-height: 230px;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Este Corregido</th>
+                    <th>Norte Corregido</th>
+                    <th>Cota (Z)</th>
+                    <th>ΔE (mm)</th>
+                    <th>ΔN (mm)</th>
+                    <th>Desc.</th>
+                  </tr>
+                </thead>
+                <tbody id="c7BatchOutputBody"></tbody>
+              </table>
+            </div>
+          </div>
         </div>
 
         <!-- ===== VISOR DE MAPA EN VIVO PARA CALCULADORAS DE COORDENADAS ===== -->

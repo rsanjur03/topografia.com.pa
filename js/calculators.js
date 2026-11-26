@@ -867,6 +867,7 @@
 
   // ==================== 7. FACTOR DE ESCALA COMBINADO (CSF: TERRENO <-> UTM) ====================
   let lastCsfResult = null;
+  let lastC7ScaledPoints = [];
 
   const CSF_PRESETS = {
     david:   { e: 342527.835, n: 932597.318, zone: 17, hemi: 'N', H: 48.50, N: 7.50, label: 'David, Chiriquí' },
@@ -928,6 +929,7 @@
     ].join('');
 
     updateCsfConversions();
+    calcCsfBatchPoints();
 
     if (activeCalcId === 'csf') {
       updateCalcMiniMap([{
@@ -975,6 +977,85 @@
         kv('Diferencia (ΔÁrea):', `${diffA >= 0 ? '+' : ''}${diffA.toFixed(3)} m²`)
       ].join('');
     }
+  }
+
+  function calcCsfBatchPoints() {
+    const summaryBox = $('resC7BatchSummary');
+    const outBody = $('c7BatchOutputBody');
+    if (!summaryBox || !outBody || !lastCsfResult) return;
+
+    const rawText = $('c7PointsText').value.trim();
+    if (!rawText) {
+      summaryBox.className = 'result-box mt-sm';
+      summaryBox.textContent = 'Pega puntos, sube un archivo CSV/TXT o pulsa "Traer de COGO" para corregir coordenadas con el CSF.';
+      outBody.innerHTML = '';
+      lastC7ScaledPoints = [];
+      return;
+    }
+
+    const parsed = IO.parsePointsText(rawText, { format: $('c7BatchFormat').value, delimiter: 'auto' });
+    if (parsed.points.length === 0) {
+      summaryBox.className = 'result-box error mt-sm';
+      summaryBox.textContent = 'No se detectaron puntos válidos. Revisa el formato de columnas.';
+      outBody.innerHTML = '';
+      lastC7ScaledPoints = [];
+      return;
+    }
+
+    const pts = parsed.points;
+    const anchorMode = $('c7AnchorMode').value;
+    let anchor;
+    let anchorLabel = '';
+    if (anchorMode === 'centroid') {
+      anchor = {
+        e: pts.reduce((s, p) => s + p.e, 0) / pts.length,
+        n: pts.reduce((s, p) => s + p.n, 0) / pts.length
+      };
+      anchorLabel = `Centroide (${anchor.e.toFixed(3)}, ${anchor.n.toFixed(3)})`;
+    } else if (anchorMode === 'section1') {
+      anchor = { e: parseFloat($('c7UtmE').value) || 0, n: parseFloat($('c7UtmN').value) || 0 };
+      anchorLabel = `Sección 1 (${anchor.e.toFixed(3)}, ${anchor.n.toFixed(3)})`;
+    } else if (anchorMode === 'origin') {
+      anchor = { e: 0, n: 0 };
+      anchorLabel = 'Origen (0, 0)';
+    } else {
+      anchor = { e: pts[0].e, n: pts[0].n };
+      anchorLabel = `${pts[0].id} (${anchor.e.toFixed(3)}, ${anchor.n.toFixed(3)})`;
+    }
+
+    const dir = $('c7BatchDir').value;
+    const res = Geo.scalePointsByCsf(pts, lastCsfResult.csf, dir, anchor);
+    if (!res.ok) {
+      summaryBox.className = 'result-box error mt-sm';
+      summaryBox.textContent = res.error;
+      return;
+    }
+
+    lastC7ScaledPoints = res.points;
+    const dirLabel = dir === 'grid_to_ground'
+      ? `UTM → Terreno para Estación Total (× ${(1 / res.csf).toFixed(8)})`
+      : `Terreno → Cuadrícula UTM (× ${res.csf.toFixed(8)})`;
+    const deltaDistMm = (res.distAfter - res.distBefore) * 1000;
+
+    summaryBox.className = 'result-box mt-sm';
+    summaryBox.innerHTML = [
+      kv('Conversión aplicada:', dirLabel),
+      kv('Punto Base Fijo (Pivote):', anchorLabel),
+      kv('Puntos corregidos / Desplaz. Máx:', `${res.points.length} pts · ${(res.maxShiftM * 1000).toFixed(1)} mm`),
+      kv('Recorrido Entrada → Corregido:', `${res.distBefore.toFixed(3)} m → ${res.distAfter.toFixed(3)} m (${deltaDistMm >= 0 ? '+' : ''}${deltaDistMm.toFixed(1)} mm)`)
+    ].join('');
+
+    outBody.innerHTML = res.points.map(p => `
+      <tr>
+        <td><strong>${p.id}</strong></td>
+        <td>${p.e.toFixed(3)}</td>
+        <td>${p.n.toFixed(3)}</td>
+        <td>${(Number(p.z) || 0).toFixed(2)}</td>
+        <td>${p.dE >= 0 ? '+' : ''}${(p.dE * 1000).toFixed(1)}</td>
+        <td>${p.dN >= 0 ? '+' : ''}${(p.dN * 1000).toFixed(1)}</td>
+        <td>${p.desc || '-'}</td>
+      </tr>
+    `).join('');
   }
 
   // ==================== INICIALIZACIÓN ====================
@@ -1133,6 +1214,61 @@
         $('c7GeoidN').value = p.N.toFixed(2);
         calcCombinedScaleFactor();
       });
+    });
+
+    // Sección 4 de CSF: Conversión masiva de puntos para Estación Total
+    $('c7PointsText').value = [
+      'Punto,Norte,Este,Cota,Descripcion',
+      'P1,932597.318,342527.835,48.50,MOJON 1',
+      'P2,932534.131,342604.985,48.90,MOJON 2',
+      'P3,932579.153,342643.398,48.30,MOJON 3',
+      'P4,932639.872,342564.762,48.10,MOJON 4'
+    ].join('\n');
+
+    $('btnC7ScalePts').addEventListener('click', calcCsfBatchPoints);
+    ['c7BatchDir', 'c7AnchorMode', 'c7BatchFormat'].forEach(id => {
+      $(id).addEventListener('change', calcCsfBatchPoints);
+    });
+    $('btnC7PullCogo').addEventListener('click', () => {
+      if (!global.TopoAppBridge || !global.TopoAppBridge.getCogoPoints) return;
+      const pts = global.TopoAppBridge.getCogoPoints();
+      if (pts.length === 0) return;
+      $('c7BatchFormat').value = 'PNEZD';
+      $('c7PointsText').value = IO.pointsToCSV(pts, 'PNEZD');
+      calcCsfBatchPoints();
+    });
+    $('btnC7Upload').addEventListener('click', () => $('c7FileInput').click());
+    $('c7FileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        $('c7PointsText').value = reader.result || '';
+        calcCsfBatchPoints();
+      };
+      reader.readAsText(file, 'utf-8');
+      e.target.value = '';
+    });
+    $('btnC7DownloadCsv').addEventListener('click', () => {
+      calcCsfBatchPoints();
+      if (lastC7ScaledPoints.length === 0) return;
+      const fmt = $('c7BatchFormat').value === 'PENZD' ? 'PENZD' : 'PNEZD';
+      const csv = IO.pointsToCSV(lastC7ScaledPoints, fmt);
+      const tag = $('c7BatchDir').value === 'grid_to_ground' ? 'TERRENO_EstacionTotal' : 'UTM_Cuadricula';
+      IO.downloadFile(`puntos_${tag}.csv`, csv, 'text/csv;charset=utf-8');
+    });
+    $('btnC7CopyPts').addEventListener('click', async () => {
+      calcCsfBatchPoints();
+      if (lastC7ScaledPoints.length === 0) return;
+      const lines = ['Punto\tNorte\tEste\tCota\tDescripcion'];
+      for (const p of lastC7ScaledPoints) {
+        lines.push(`${p.id}\t${p.n.toFixed(4)}\t${p.e.toFixed(4)}\t${(Number(p.z) || 0).toFixed(3)}\t${p.desc || ''}`);
+      }
+      try {
+        await navigator.clipboard.writeText(lines.join('\r\n'));
+      } catch {
+        IO.downloadFile('puntos_corregidos_csf.tsv', lines.join('\r\n'), 'text/tab-separated-values');
+      }
     });
 
     // Ejecutar cálculos iniciales de muestra para todas las calculadoras
