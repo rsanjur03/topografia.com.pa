@@ -1051,6 +1051,25 @@
           </div>
         </div>
 
+        <!-- ===== VISOR DE MAPA EN VIVO PARA CALCULADORAS DE COORDENADAS ===== -->
+        <div id="calcMapCard" class="card calc-card calc-map-card mt-sm">
+          <div class="card-header">
+            <div>
+              <h3 data-i18n="calcMapTitle">Ubicación en Mapa (WGS84)</h3>
+              <small id="calcMapSubtitle" class="muted-meta">Haz clic en el mapa para consultar cualquier coordenada</small>
+            </div>
+            <div class="row-actions">
+              <div class="segmented" id="calcMapBmToggle">
+                <button type="button" class="seg-btn active" data-cbm="satellite" data-i18n="bmSat">Satelital</button>
+                <button type="button" class="seg-btn" data-cbm="hybrid" data-i18n="bmHybrid">Híbrido</button>
+                <button type="button" class="seg-btn" data-cbm="street" data-i18n="bmStreet">StreetMap</button>
+              </div>
+              <button id="btnCalcMapFit" type="button" class="chip-btn" title="Centrar en los puntos">🎯 Centrar</button>
+            </div>
+          </div>
+          <div id="calcMiniMap" class="calc-mini-map mt-xs"></div>
+        </div>
+
         <!-- ===== CALCULADORA 4: GRADOS DECIMALES <-> G° M' S" ===== -->
         <div id="calc-dms-dd" class="calc-section">
           <div class="calc-header">

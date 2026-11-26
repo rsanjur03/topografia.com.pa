@@ -15,6 +15,196 @@
   let currentGpsState = null;
   let calViewYear = 2026;
   let calViewMonth = 11; // 1..12
+  let activeCalcId = 'utm-geo';
+
+  // Mini-mapa Leaflet dedicado para las calculadoras de coordenadas
+  let calcMap = null;
+  let calcMapLayers = {};
+  let calcActiveTiles = [];
+  let calcOverlayGroup = null;
+  let lastCalcMapPoints = [];
+
+  const MAP_ENABLED_CALCS = new Set(['utm-geo', 'ecef-utm', 'nad27-wgs84']);
+
+  function initCalcMiniMap() {
+    if (calcMap || typeof global.L === 'undefined' || !$('calcMiniMap')) return;
+    const L = global.L;
+
+    calcMap = L.map('calcMiniMap', {
+      center: [8.43428, -82.43039],
+      zoom: 16,
+      maxZoom: 21,
+      preferCanvas: true
+    });
+
+    L.control.scale({ metric: true, imperial: false, position: 'bottomleft' }).addTo(calcMap);
+
+    calcMapLayers = {
+      satellite: [
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri',
+          maxNativeZoom: 19,
+          maxZoom: 21
+        })
+      ],
+      hybrid: [
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri',
+          maxNativeZoom: 19,
+          maxZoom: 21
+        }),
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+          maxNativeZoom: 19,
+          maxZoom: 21,
+          opacity: 0.9
+        }),
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+          maxNativeZoom: 19,
+          maxZoom: 21,
+          opacity: 0.8
+        })
+      ],
+      street: [
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri — World Street Map',
+          maxNativeZoom: 19,
+          maxZoom: 21
+        })
+      ]
+    };
+
+    calcOverlayGroup = L.layerGroup().addTo(calcMap);
+    setCalcMapBasemap('satellite');
+
+    // Clic en el mapa: consulta coordenadas y rellena la calculadora activa automáticamente
+    calcMap.on('click', (ev) => {
+      const { lat, lng } = ev.latlng;
+      const utm = Geo.latLonToUtm(lat, lng, null, 'WGS84');
+
+      if (activeCalcId === 'utm-geo') {
+        $('c1GeoLat').value = lat.toFixed(8);
+        $('c1GeoLon').value = lng.toFixed(8);
+        $('c1UtmE').value = utm.easting.toFixed(3);
+        $('c1UtmN').value = utm.northing.toFixed(3);
+        $('c1UtmZone').value = utm.zone;
+        $('c1UtmHemi').value = utm.hemisphere;
+        calcUtmToGeo();
+        calcGeoToUtm();
+      } else if (activeCalcId === 'ecef-utm') {
+        const h = parseFloat($('c2UtmH').value) || 0;
+        const ecef = Geo.geodeticToEcef(lat, lng, h, 'WGS84');
+        $('c2UtmE').value = utm.easting.toFixed(3);
+        $('c2UtmN').value = utm.northing.toFixed(3);
+        $('c2UtmZone').value = utm.zone;
+        $('c2UtmHemi').value = utm.hemisphere;
+        $('c2EcefX').value = ecef.x.toFixed(3);
+        $('c2EcefY').value = ecef.y.toFixed(3);
+        $('c2EcefZ').value = ecef.z.toFixed(3);
+        calcUtmToEcef();
+        calcEcefToUtm();
+      } else if (activeCalcId === 'nad27-wgs84') {
+        $('c3Direction').value = 'wgs84_to_nad27';
+        if ($('c3CoordType').value === 'utm') {
+          $('c3UtmE').value = utm.easting.toFixed(3);
+          $('c3UtmN').value = utm.northing.toFixed(3);
+          $('c3UtmZone').value = utm.zone;
+          $('c3UtmHemi').value = utm.hemisphere;
+        } else {
+          $('c3GeoLat').value = lat.toFixed(8);
+          $('c3GeoLon').value = lng.toFixed(8);
+        }
+        calcDatumTransform();
+      }
+    });
+  }
+
+  function setCalcMapBasemap(name) {
+    if (!calcMap) return;
+    for (const tl of calcActiveTiles) calcMap.removeLayer(tl);
+    calcActiveTiles = [];
+    for (const tl of (calcMapLayers[name] || [])) {
+      tl.addTo(calcMap);
+      calcActiveTiles.push(tl);
+    }
+  }
+
+  /**
+   * Dibuja 1 o más marcadores sobre el mini-mapa de las calculadoras y encuadra la vista.
+   * items: [{ lat, lon, label, color, popupHtml }]
+   * connectLine: si true, traza línea punteada entre los 2 puntos (ideal para desplazamiento NAD27 ↔ WGS84)
+   */
+  function updateCalcMiniMap(items, subtitleText = '', connectLine = false) {
+    lastCalcMapPoints = (items || []).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+    if (subtitleText && $('calcMapSubtitle')) {
+      $('calcMapSubtitle').textContent = subtitleText;
+    }
+    if (!calcMap || !calcOverlayGroup) return;
+    const L = global.L;
+    calcOverlayGroup.clearLayers();
+    if (lastCalcMapPoints.length === 0) return;
+
+    const latLngs = lastCalcMapPoints.map(p => [p.lat, p.lon]);
+
+    if (connectLine && latLngs.length >= 2) {
+      L.polyline(latLngs, {
+        color: '#fbbf24',
+        weight: 2.5,
+        dashArray: '6, 6'
+      }).addTo(calcOverlayGroup);
+    }
+
+    lastCalcMapPoints.forEach((p) => {
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: 7.5,
+        color: '#0f172a',
+        weight: 2.2,
+        fillColor: p.color || '#00e5a0',
+        fillOpacity: 1
+      }).addTo(calcOverlayGroup);
+
+      if (p.popupHtml) m.bindPopup(p.popupHtml);
+
+      if (p.label) {
+        const tagIcon = L.divIcon({
+          className: 'map-pt-label',
+          html: `<span class="pt-tag" style="border-color:${p.color || '#00e5a0'};color:${p.color || '#00e5a0'};">${p.label}</span>`,
+          iconSize: [0, 0],
+          iconAnchor: [-11, 12]
+        });
+        L.marker([p.lat, p.lon], { icon: tagIcon, interactive: false }).addTo(calcOverlayGroup);
+      }
+    });
+
+    fitCalcMiniMap();
+  }
+
+  function fitCalcMiniMap() {
+    if (!calcMap || lastCalcMapPoints.length === 0) return;
+    if (lastCalcMapPoints.length === 1) {
+      calcMap.setView([lastCalcMapPoints[0].lat, lastCalcMapPoints[0].lon], 17);
+    } else {
+      const bounds = global.L.latLngBounds(lastCalcMapPoints.map(p => [p.lat, p.lon]));
+      calcMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+    }
+  }
+
+  function syncCalcMapVisibility() {
+    const card = $('calcMapCard');
+    if (!card) return;
+    const show = MAP_ENABLED_CALCS.has(activeCalcId);
+    card.classList.toggle('hidden', !show);
+    if (show) {
+      initCalcMiniMap();
+      setTimeout(() => {
+        if (calcMap) {
+          calcMap.invalidateSize();
+          if (activeCalcId === 'utm-geo') calcUtmToGeo();
+          else if (activeCalcId === 'ecef-utm') calcEcefToUtm();
+          else if (activeCalcId === 'nad27-wgs84') calcDatumTransform();
+        }
+      }, 60);
+    }
+  }
 
   const MONTHS_ES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -46,6 +236,8 @@
     });
     if (!isCalcs && global.TopoAppBridge && global.TopoAppBridge.onReturnToCogo) {
       global.TopoAppBridge.onReturnToCogo();
+    } else if (isCalcs) {
+      syncCalcMapVisibility();
     }
   }
 
@@ -86,6 +278,16 @@
       kv('Convergencia (γ):', `${r.convergenceDeg.toFixed(6)}° (${Geo.ddToParts(r.convergenceDeg).dmsText})`),
       kv('Factor de Escala (k):', r.scaleFactor.toFixed(8))
     ].join('');
+
+    if (activeCalcId === 'utm-geo') {
+      updateCalcMiniMap([{
+        lat: r.lat,
+        lon: r.lon,
+        label: `UTM ${zone}${hemi}`,
+        color: '#00e5a0',
+        popupHtml: `<div class="map-popup"><div class="map-popup-title">UTM → Geográficas</div><div><b>E:</b> ${e.toFixed(3)} m</div><div><b>N:</b> ${n.toFixed(3)} m</div><div><b>Lat/Lon:</b> ${r.lat.toFixed(6)}°, ${r.lon.toFixed(6)}°</div></div>`
+      }], `UTM ${zone}${hemi} (${ell}): E ${e.toFixed(3)}, N ${n.toFixed(3)} → Lat ${r.lat.toFixed(6)}°, Lon ${r.lon.toFixed(6)}°`);
+    }
   }
 
   function calcGeoToUtm() {
@@ -112,6 +314,16 @@
       kv('Convergencia (γ):', `${r.convergenceDeg.toFixed(6)}° (${Geo.ddToParts(r.convergenceDeg).dmsText})`),
       kv('Factor de Escala (k):', r.scaleFactor.toFixed(8))
     ].join('');
+
+    if (activeCalcId === 'utm-geo') {
+      updateCalcMiniMap([{
+        lat,
+        lon,
+        label: `GEO → ${r.zone}${r.hemisphere}`,
+        color: '#38bdf8',
+        popupHtml: `<div class="map-popup"><div class="map-popup-title">Geográficas → UTM</div><div><b>Lat/Lon:</b> ${lat.toFixed(6)}°, ${lon.toFixed(6)}°</div><div><b>E:</b> ${r.easting.toFixed(3)} m</div><div><b>N:</b> ${r.northing.toFixed(3)} m</div></div>`
+      }], `Geográficas: ${lat.toFixed(6)}°, ${lon.toFixed(6)}° → UTM ${r.zone}${r.hemisphere} E ${r.easting.toFixed(3)}, N ${r.northing.toFixed(3)}`);
+    }
   }
 
   // ==================== 2. GEOCENTRICAS ECEF <-> UTM ====================
@@ -140,6 +352,16 @@
       kv('Lat / Lon:', `${r.lat.toFixed(7)}°, ${r.lon.toFixed(7)}°`),
       kv('Altura Elipsoidal (h):', `${h.toFixed(3)} m`)
     ].join('');
+
+    if (activeCalcId === 'ecef-utm') {
+      updateCalcMiniMap([{
+        lat: r.lat,
+        lon: r.lon,
+        label: 'UTM → ECEF',
+        color: '#00e5a0',
+        popupHtml: `<div class="map-popup"><div class="map-popup-title">UTM → ECEF WGS84</div><div><b>X:</b> ${r.x.toFixed(3)} m</div><div><b>Y:</b> ${r.y.toFixed(3)} m</div><div><b>Z:</b> ${r.z.toFixed(3)} m</div><div><b>h:</b> ${h.toFixed(3)} m</div></div>`
+      }], `ECEF (X:${r.x.toFixed(2)}, Y:${r.y.toFixed(2)}, Z:${r.z.toFixed(2)}) · h=${h.toFixed(2)} m`);
+    }
   }
 
   function calcEcefToUtm() {
@@ -166,6 +388,16 @@
       kv('Latitud / Longitud:', `${r.lat.toFixed(7)}°, ${r.lon.toFixed(7)}°`),
       kv('DMS:', `${formatLatDms(r.lat)} · ${formatLonDms(r.lon)}`)
     ].join('');
+
+    if (activeCalcId === 'ecef-utm') {
+      updateCalcMiniMap([{
+        lat: r.lat,
+        lon: r.lon,
+        label: `ECEF → ${r.zone}${r.hemisphere}`,
+        color: '#38bdf8',
+        popupHtml: `<div class="map-popup"><div class="map-popup-title">ECEF → UTM ${r.zone}${r.hemisphere}</div><div><b>E:</b> ${r.easting.toFixed(3)} m</div><div><b>N:</b> ${r.northing.toFixed(3)} m</div><div><b>h:</b> ${r.h.toFixed(3)} m</div></div>`
+      }], `ECEF → UTM ${r.zone}${r.hemisphere}: E ${r.easting.toFixed(3)}, N ${r.northing.toFixed(3)}, h ${r.h.toFixed(2)} m`);
+    }
   }
 
   // ==================== 3. DATUM NAD27 <-> WGS84 ====================
@@ -220,6 +452,29 @@
         kv('Desplazamiento ΔE / ΔN:', `${r.dE >= 0 ? '+' : ''}${r.dE.toFixed(3)} m / ${r.dN >= 0 ? '+' : ''}${r.dN.toFixed(3)} m (Total: ${dH.toFixed(3)} m)`),
         kv('Parámetros (ΔX, ΔY, ΔZ):', `${shift.dx}, ${shift.dy}, ${shift.dz} m`)
       ].join('');
+
+      if (activeCalcId === 'nad27-wgs84') {
+        // Mostrar posición real WGS84 (verde) vs coordenada NAD27 sin transformar sobre WGS84 (ámbar) para visualizar el desplazamiento de ~200m
+        const wgsGeo = dir === 'nad27_to_wgs84' ? r.dstGeo : r.srcGeo;
+        const nadUtm = dir === 'nad27_to_wgs84' ? { e, n } : { e: r.dstUtm.easting, n: r.dstUtm.northing };
+        const nadAsWgs = Geo.utmToLatLon(nadUtm.e, nadUtm.n, zone, hemi, 'WGS84');
+        updateCalcMiniMap([
+          {
+            lat: wgsGeo.lat,
+            lon: wgsGeo.lon,
+            label: 'WGS84 (Real)',
+            color: '#00e5a0',
+            popupHtml: `<div class="map-popup"><div class="map-popup-title">Posición WGS84</div><div><b>E:</b> ${lastC3WgsPoint.e.toFixed(3)} m</div><div><b>N:</b> ${lastC3WgsPoint.n.toFixed(3)} m</div></div>`
+          },
+          {
+            lat: nadAsWgs.lat,
+            lon: nadAsWgs.lon,
+            label: `NAD27 (Δ ${dH.toFixed(1)} m)`,
+            color: '#f59e0b',
+            popupHtml: `<div class="map-popup"><div class="map-popup-title">NAD27 sin transformar</div><div><b>E:</b> ${nadUtm.e.toFixed(3)} m</div><div><b>N:</b> ${nadUtm.n.toFixed(3)} m</div><div><b>Desplazamiento:</b> ${dH.toFixed(2)} m</div></div>`
+          }
+        ], `Desplazamiento visual NAD27 ↔ WGS84: ΔE ${r.dE >= 0 ? '+' : ''}${r.dE.toFixed(2)} m, ΔN ${r.dN >= 0 ? '+' : ''}${r.dN.toFixed(2)} m (Total ${dH.toFixed(2)} m)`, true);
+      }
     } else {
       const lat = parseFloat($('c3GeoLat').value);
       const lon = parseFloat($('c3GeoLon').value);
@@ -243,6 +498,17 @@
         kv(`UTM ${dstLabel} (${dstUtm.zone}${dstUtm.hemisphere}):`, `E ${dstUtm.easting.toFixed(3)} m, N ${dstUtm.northing.toFixed(3)} m`),
         kv('Parámetros (ΔX, ΔY, ΔZ):', `${shift.dx}, ${shift.dy}, ${shift.dz} m`)
       ].join('');
+
+      if (activeCalcId === 'nad27-wgs84') {
+        const wgsLat = dir === 'nad27_to_wgs84' ? dstGeo.lat : lat;
+        const wgsLon = dir === 'nad27_to_wgs84' ? dstGeo.lon : lon;
+        const nadLat = dir === 'nad27_to_wgs84' ? lat : dstGeo.lat;
+        const nadLon = dir === 'nad27_to_wgs84' ? lon : dstGeo.lon;
+        updateCalcMiniMap([
+          { lat: wgsLat, lon: wgsLon, label: 'WGS84 (Real)', color: '#00e5a0' },
+          { lat: nadLat, lon: nadLon, label: 'NAD27 (Sin transf.)', color: '#f59e0b' }
+        ], `Comparación visual WGS84 vs NAD27 (${wgsLat.toFixed(6)}°, ${wgsLon.toFixed(6)}°)`, true);
+      }
     }
   }
 
@@ -419,9 +685,21 @@
         document.querySelectorAll('.calc-nav-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.calc-section').forEach(s => s.classList.remove('active'));
         btn.classList.add('active');
-        $(`calc-${btn.dataset.calc}`).classList.add('active');
+        activeCalcId = btn.dataset.calc;
+        $(`calc-${activeCalcId}`).classList.add('active');
+        syncCalcMapVisibility();
       });
     });
+
+    // Controles del mini-mapa de calculadoras
+    $('calcMapBmToggle').addEventListener('click', (e) => {
+      const btn = e.target.closest('.seg-btn');
+      if (!btn) return;
+      $('calcMapBmToggle').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setCalcMapBasemap(btn.dataset.cbm);
+    });
+    $('btnCalcMapFit').addEventListener('click', fitCalcMiniMap);
 
     // Calc 1: UTM <-> Geo
     $('btnC1UtmToGeo').addEventListener('click', calcUtmToGeo);
