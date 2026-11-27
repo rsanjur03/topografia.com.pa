@@ -30,6 +30,7 @@
 
   let mapEngine = null;
   let toastTimer = null;
+  let tryLoadFromUrlHash = null;
 
   // ==================== UTILIDADES UI ====================
   const $ = (id) => document.getElementById(id);
@@ -1724,7 +1725,7 @@
       } catch {}
     };
 
-    const readAnatiForm = () => {
+    const readAnatiForm = (persistProfile = true) => {
       const data = {};
       for (const [k, id] of Object.entries(anatiFieldIds)) {
         data[k] = $(id) ? $(id).value.trim() : '';
@@ -1741,22 +1742,24 @@
       data.cedPropietario = props.map(p => p.cedula).filter(Boolean).join(', ');
       data.favorDe = buyers.map(p => p.name).filter(Boolean).join(', ');
       data.cedFavorDe = buyers.map(p => p.cedula).filter(Boolean).join(', ');
-      try {
-        localStorage.setItem(ANATI_STORAGE_KEY, JSON.stringify({
-          provincia: data.provincia,
-          distrito: data.distrito,
-          corregimiento: data.corregimiento,
-          lugar: data.lugar,
-          profTitulo: data.profTitulo,
-          profNombre: data.profNombre,
-          profCedula: data.profCedula,
-          profLicencia: data.profLicencia,
-          hojaIgn: data.hojaIgn,
-          equipo: data.equipo,
-          monumentacion: data.monumentacion,
-          parties: anatiParties
-        }));
-      } catch {}
+      if (persistProfile) {
+        try {
+          localStorage.setItem(ANATI_STORAGE_KEY, JSON.stringify({
+            provincia: data.provincia,
+            distrito: data.distrito,
+            corregimiento: data.corregimiento,
+            lugar: data.lugar,
+            profTitulo: data.profTitulo,
+            profNombre: data.profNombre,
+            profCedula: data.profCedula,
+            profLicencia: data.profLicencia,
+            hojaIgn: data.hojaIgn,
+            equipo: data.equipo,
+            monumentacion: data.monumentacion,
+            parties: anatiParties
+          }));
+        } catch {}
+      }
       return data;
     };
 
@@ -2233,7 +2236,386 @@
 
       // Cargar hojas guardadas en IndexedDB al inicio
       IGN.loadSavedSheets().then(() => {
-        syncIgnMapOverlay();
+        if (pendingSharedIgn) applySharedIgn(pendingSharedIgn);
+        else syncIgnMapOverlay();
+      });
+    }
+
+    // ==================== COMPARTIR PLANO (#p=...) Y MIS PLANOS ====================
+    const Share = global.TopoShare;
+    const shareDialog = $('shareDialog');
+    const projectsDialog = $('projectsDialog');
+    let pendingSharedIgn = null;
+
+    function applySharedIgn(ignCfg) {
+      if (!IGN || !ignCfg) return;
+      const wanted = new Set((ignCfg.codes || []).map(c => String(c || '').trim().toUpperCase()));
+      IGN.getSheets().forEach(s => {
+        const match = wanted.has(String(s.code || '').trim().toUpperCase());
+        IGN.setSheetEnabled(s.id, match);
+      });
+      if (Number.isFinite(Number(ignCfg.opacity))) {
+        IGN.setOpacity(Number(ignCfg.opacity));
+      }
+      syncIgnMapOverlay();
+      renderIgnSheetsList();
+    }
+
+    function collectProjectPayload({ includeAnati = true, includeIgn = true } = {}) {
+      const activeIgnCodes = (includeIgn && IGN)
+        ? IGN.getEnabledSheets().map(s => s.code).filter(Boolean)
+        : [];
+      return {
+        projectName: state.projectName || 'Plano_ANATI',
+        crsMode: state.crsMode,
+        utmZone: state.utmZone,
+        utmHemi: state.utmHemi,
+        closed: Boolean(state.closed),
+        basemap: (includeIgn && mapEngine) ? (mapEngine.basemap || 'satellite') : 'satellite',
+        points: state.points.map(p => ({
+          id: String(p.id || ''),
+          e: Number(p.e) || 0,
+          n: Number(p.n) || 0,
+          z: Number(p.z) || 0,
+          desc: String(p.desc || '')
+        })),
+        ign: (includeIgn && IGN && activeIgnCodes.length > 0)
+          ? { codes: activeIgnCodes, opacity: IGN.getOpacity() }
+          : null,
+        lotDivision: (state.lotDivision && state.lotDivision.ok)
+          ? { numLots: state.lotDivision.numLots, cutAzimuth: state.lotDivision.cutAzimuth }
+          : null,
+        boundaries: includeAnati ? JSON.parse(JSON.stringify(state.boundaries || {})) : {},
+        anati: includeAnati ? readAnatiForm(false) : null,
+        tiePoints: includeAnati ? readAnatiTiePoints() : []
+      };
+    }
+
+    function loadProjectPayload(payload, sourceLabel = 'Plano cargado') {
+      if (!payload || !Array.isArray(payload.points) || payload.points.length === 0) {
+        showToast('El plano no contiene puntos válidos.');
+        return false;
+      }
+
+      // Asegurar vista COGO activa si el usuario estaba en Calculadoras
+      const cogoNavBtn = document.querySelector('[data-view="cogo"]');
+      if (cogoNavBtn && !cogoNavBtn.classList.contains('active')) {
+        cogoNavBtn.click();
+      }
+
+      state.projectName = payload.projectName || 'Plano_Compartido';
+      if ($('projectNameInput')) $('projectNameInput').value = state.projectName;
+
+      state.crsMode = payload.crsMode === 'local' ? 'local' : 'utm';
+      state.utmZone = Number(payload.utmZone) || 17;
+      state.utmHemi = payload.utmHemi || 'N';
+      if (state.crsMode === 'local') {
+        state.crsLabel = 'SISTEMA LOCAL (PLANO CAD)';
+        if ($('crsSelect')) $('crsSelect').value = 'local';
+        if ($('hudCrsBadge')) $('hudCrsBadge').textContent = 'SISTEMA LOCAL';
+        $('hudLatLonWrap')?.classList.add('hidden');
+      } else {
+        state.crsLabel = `UTM WGS84 ZONA ${state.utmZone}${state.utmHemi} (PANAMA)`;
+        if ($('crsSelect')) $('crsSelect').value = state.utmZone === 18 ? 'utm18N' : 'utm17N';
+        if ($('hudCrsBadge')) $('hudCrsBadge').textContent = `UTM WGS84 · ${state.utmZone}${state.utmHemi}`;
+        $('hudLatLonWrap')?.classList.remove('hidden');
+      }
+
+      state.points = payload.points.map((p, idx) => ({
+        id: String(p.id || (idx + 1)),
+        e: Number(p.e) || 0,
+        n: Number(p.n) || 0,
+        z: Number(p.z) || 0,
+        desc: String(p.desc || '')
+      }));
+      state.closed = payload.closed !== false && state.points.length >= 3;
+      state.curves = [];
+      state.auxLines = [];
+      state.closureInfo = null;
+      state.boundaries = payload.boundaries ? JSON.parse(JSON.stringify(payload.boundaries)) : {};
+      if ($('chkClosedPoly')) $('chkClosedPoly').checked = state.closed;
+      $('bowditchResult')?.classList.add('hidden');
+
+      if (state.points[0]) {
+        $('initId').value = state.points[0].id;
+        $('initE').value = state.points[0].e.toFixed(3);
+        $('initN').value = state.points[0].n.toFixed(3);
+        $('initZ').value = (Number(state.points[0].z) || 0).toFixed(2);
+        $('initDesc').value = state.points[0].desc || '';
+      }
+
+      // Restaurar división de lotes si aplica
+      if (payload.lotDivision && payload.lotDivision.numLots >= 2 && state.points.length >= 3) {
+        const div = C.subdividePolygonEqualArea(state.points, payload.lotDivision.numLots, payload.lotDivision.cutAzimuth || 0);
+        state.lotDivision = div.ok ? div : null;
+        if ($('divLotsCount')) $('divLotsCount').value = String(payload.lotDivision.numLots);
+      } else {
+        state.lotDivision = null;
+      }
+
+      // Restaurar datos ANATI (Pie de Plano + Propietarios/Adquirientes + Amarres)
+      if (payload.anati && typeof payload.anati === 'object') {
+        for (const [k, id] of Object.entries(anatiFieldIds)) {
+          if (!$(id)) continue;
+          if (k === 'scale') {
+            $(id).value = payload.anati.scale ? String(payload.anati.scale) : 'auto';
+          } else if (payload.anati[k] !== undefined && payload.anati[k] !== null) {
+            $(id).value = String(payload.anati[k]);
+          }
+        }
+        if (Array.isArray(payload.anati.parties) && payload.anati.parties.length > 0) {
+          anatiParties = payload.anati.parties.map(p => ({
+            name: p.name || '',
+            cedula: p.cedula || '',
+            role: p.role || 'PROPIETARIO'
+          }));
+          renderAnatiPartiesList();
+        }
+      }
+
+      // Restaurar intersecciones viales de amarre
+      const ties = Array.isArray(payload.tiePoints) ? payload.tiePoints : [];
+      if ($('anatiTie1E')) $('anatiTie1E').value = ties[0] ? Math.round(ties[0].e) : '';
+      if ($('anatiTie1N')) $('anatiTie1N').value = ties[0] ? Math.round(ties[0].n) : '';
+      if ($('anatiTie2E')) $('anatiTie2E').value = ties[1] ? Math.round(ties[1].e) : '';
+      if ($('anatiTie2N')) $('anatiTie2N').value = ties[1] ? Math.round(ties[1].n) : '';
+      renderAnatiBoundariesList();
+
+      // Aplicar CRS y mapa base
+      if (mapEngine) {
+        mapEngine.setCRS(state.crsMode, state.utmZone, state.utmHemi);
+        const rawBm = state.crsMode === 'local' ? 'cad' : (payload.basemap || 'satellite');
+        const desiredBm = rawBm === 'streets' ? 'osm' : rawBm;
+        const validBm = ['satellite', 'hybrid', 'osm', 'topo', 'cad'].includes(desiredBm) ? desiredBm : 'satellite';
+        document.querySelectorAll('.bm-btn[data-bm]').forEach(b => b.classList.toggle('active', b.dataset.bm === validBm));
+        mapEngine.setBasemap(validBm);
+      }
+
+      // Restaurar hojas IGN activas si el enlace/plano las incluye
+      if (payload.ign && Array.isArray(payload.ign.codes)) {
+        pendingSharedIgn = payload.ign;
+        applySharedIgn(payload.ign);
+      } else {
+        pendingSharedIgn = null;
+      }
+
+      refreshAll(false);
+      setTimeout(() => {
+        if (mapEngine) {
+          mapEngine.invalidateSize();
+          mapEngine.fitBounds();
+        }
+      }, 160);
+      showToast(`✓ ${sourceLabel}: "${state.projectName}" (${state.points.length} pts)`, 4200);
+      return true;
+    }
+
+    async function refreshShareUrl() {
+      if (!Share || !$('shareUrlOutput')) return;
+      if (state.points.length === 0) {
+        $('shareUrlOutput').value = '';
+        if ($('shareUrlMeta')) $('shareUrlMeta').textContent = 'Agrega al menos un punto para generar un enlace compartible.';
+        return;
+      }
+      const includeAnati = $('shareOptAnati') ? $('shareOptAnati').checked : true;
+      const includeIgn = $('shareOptIgn') ? $('shareOptIgn').checked : true;
+      const payload = collectProjectPayload({ includeAnati, includeIgn });
+      try {
+        const res = await Share.encodeProjectToUrl(payload);
+        $('shareUrlOutput').value = res.url;
+        const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
+        const areaTxt = DXF ? DXF.formatAnatiArea(metrics.areaM2) : `${metrics.areaM2.toFixed(2)} m²`;
+        const ignNote = (payload.ign && payload.ign.codes.length > 0) ? ` · ${payload.ign.codes.length} hoja(s) IGN` : '';
+        if ($('shareUrlMeta')) {
+          $('shareUrlMeta').textContent = `✓ Enlace listo (${res.length} caracteres · compresión ${res.method}) · ${state.points.length} pts · ${areaTxt}${ignNote}`;
+        }
+        if ($('btnShareWhatsApp')) {
+          const waText = `📐 Te comparto el plano interactivo "${state.projectName}" (${state.points.length} vértices · ${areaTxt}) en topografia.com.pa:\n${res.url}`;
+          $('btnShareWhatsApp').href = `https://wa.me/?text=${encodeURIComponent(waText)}`;
+        }
+      } catch (err) {
+        if ($('shareUrlMeta')) $('shareUrlMeta').textContent = `⚠ Error generando enlace: ${err.message}`;
+      }
+    }
+
+    function copyTextToClipboard(text, okMsg) {
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text)
+          .then(() => showToast(okMsg))
+          .catch(() => {
+            const ta = $('shareUrlOutput');
+            if (ta) { ta.select(); document.execCommand('copy'); }
+            showToast(okMsg);
+          });
+      } else {
+        const ta = $('shareUrlOutput');
+        if (ta) { ta.select(); document.execCommand('copy'); }
+        showToast(okMsg);
+      }
+    }
+
+    function renderSavedProjectsList() {
+      const container = $('savedProjectsList');
+      if (!container || !Share) return;
+      const list = Share.listProjects();
+      if ($('savedProjectsCount')) $('savedProjectsCount').textContent = String(list.length);
+      container.innerHTML = '';
+
+      if (list.length === 0) {
+        container.innerHTML = '<div class="muted-meta" style="padding:12px 0;">Aún no tienes planos guardados en este navegador. Escribe un nombre arriba y pulsa "Guardar Plano Actual".</div>';
+        return;
+      }
+
+      list.forEach((item) => {
+        const card = document.createElement('div');
+        card.className = 'saved-proj-card';
+        const d = new Date(item.updatedAt || Date.now());
+        const dateStr = d.toLocaleDateString('es-PA', { day: '2-digit', month: 'short', year: 'numeric' })
+          + ' ' + d.toLocaleTimeString('es-PA', { hour: '2-digit', minute: '2-digit' });
+        const areaTxt = DXF ? DXF.formatAnatiArea(item.areaM2 || 0) : `${(item.areaM2 || 0).toFixed(2)} m²`;
+        const crsTxt = item.crsMode === 'local' ? 'Local' : `UTM ${item.utmZone || 17}N`;
+        const safeName = String(item.name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+        card.innerHTML = `
+          <div class="saved-proj-info">
+            <strong>${safeName}</strong>
+            <small>${item.pointsCount || 0} pts · ${areaTxt} · ${crsTxt} · ${dateStr}</small>
+          </div>
+          <div class="row-actions" style="gap:6px;">
+            <button type="button" class="chip-btn" data-proj-open="${item.id}" title="Abrir este plano en el mapa">📂 Abrir</button>
+            <button type="button" class="chip-btn" data-proj-link="${item.id}" title="Copiar enlace compartible (#p=...)">🔗 Link</button>
+            <button type="button" class="tbl-act-btn del" data-proj-del="${item.id}" title="Eliminar de Mis Planos">✕</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+
+      container.querySelectorAll('[data-proj-open]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const item = Share.listProjects().find(p => p.id === btn.dataset.projOpen);
+          if (!item || !item.payload) return;
+          loadProjectPayload(item.payload, 'Plano abierto');
+          projectsDialog.close();
+        });
+      });
+
+      container.querySelectorAll('[data-proj-link]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const item = Share.listProjects().find(p => p.id === btn.dataset.projLink);
+          if (!item || !item.payload) return;
+          try {
+            const res = await Share.encodeProjectToUrl(item.payload);
+            copyTextToClipboard(res.url, `🔗 Enlace de "${item.name}" copiado al portapapeles`);
+          } catch (err) {
+            showToast(`Error generando enlace: ${err.message}`);
+          }
+        });
+      });
+
+      container.querySelectorAll('[data-proj-del]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          Share.deleteProject(btn.dataset.projDel);
+          renderSavedProjectsList();
+          showToast('Plano eliminado de este navegador');
+        });
+      });
+    }
+
+    if (Share) {
+      $('btnOpenShare')?.addEventListener('click', async () => {
+        if (state.points.length === 0) {
+          return showToast('Agrega o dibuja al menos un punto antes de compartir el plano.');
+        }
+        shareDialog.showModal();
+        await refreshShareUrl();
+      });
+
+      $('shareOptAnati')?.addEventListener('change', refreshShareUrl);
+      $('shareOptIgn')?.addEventListener('change', refreshShareUrl);
+
+      $('btnCopyShareUrl')?.addEventListener('click', () => {
+        const val = $('shareUrlOutput')?.value || '';
+        if (!val) return showToast('No hay enlace para copiar.');
+        copyTextToClipboard(val, '🔗 Enlace del plano copiado al portapapeles');
+      });
+
+      $('btnQuickSaveFromShare')?.addEventListener('click', () => {
+        if (state.points.length === 0) return showToast('No hay puntos para guardar.');
+        const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
+        const payload = collectProjectPayload({ includeAnati: true, includeIgn: true });
+        const saved = Share.saveProject(state.projectName, payload, metrics.areaM2);
+        renderSavedProjectsList();
+        showToast(`💾 Plano "${saved.name}" guardado en Mis Planos`);
+      });
+
+      $('btnOpenProjects')?.addEventListener('click', () => {
+        if ($('projSaveName')) $('projSaveName').value = state.projectName || 'Plano_ANATI';
+        renderSavedProjectsList();
+        projectsDialog.showModal();
+      });
+
+      $('btnSaveCurrentProj')?.addEventListener('click', () => {
+        if (state.points.length === 0) return showToast('Agrega puntos antes de guardar el plano.');
+        const name = ($('projSaveName')?.value || state.projectName || 'Plano_ANATI').trim();
+        state.projectName = name;
+        if ($('projectNameInput')) $('projectNameInput').value = name;
+        const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
+        const payload = collectProjectPayload({ includeAnati: true, includeIgn: true });
+        const saved = Share.saveProject(name, payload, metrics.areaM2);
+        renderSavedProjectsList();
+        showToast(`💾 Plano "${saved.name}" guardado localmente`);
+      });
+
+      $('btnExportProjJson')?.addEventListener('click', () => {
+        if (state.points.length === 0) return showToast('No hay puntos para exportar.');
+        const payload = collectProjectPayload({ includeAnati: true, includeIgn: true });
+        const jsonText = Share.exportProjectJson(payload);
+        const clean = (state.projectName || 'Plano_ANATI').replace(/[^a-zA-Z0-9_-]/g, '_');
+        IO.downloadFile(`${clean}.topo.json`, jsonText, 'application/json;charset=utf-8');
+        showToast(`Respaldo "${clean}.topo.json" descargado`);
+      });
+
+      $('btnImportProjJson')?.addEventListener('click', () => {
+        $('projJsonFileInput')?.click();
+      });
+
+      $('projJsonFileInput')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const payload = Share.parseProjectJson(reader.result);
+            if (!payload || !payload.points || payload.points.length === 0) {
+              return showToast('El archivo JSON no contiene un plano válido.');
+            }
+            loadProjectPayload(payload, 'Respaldo JSON cargado');
+            projectsDialog.close();
+          } catch (err) {
+            showToast(`Error leyendo JSON: ${err.message}`);
+          } finally {
+            e.target.value = '';
+          }
+        };
+        reader.readAsText(file);
+      });
+
+      tryLoadFromUrlHash = async () => {
+        try {
+          if (!global.location.hash || !global.location.hash.includes('p=')) return false;
+          const decoded = await Share.decodeProjectFromHash(global.location.hash);
+          if (!decoded || !decoded.points || decoded.points.length === 0) return false;
+          return loadProjectPayload(decoded, 'Plano compartido');
+        } catch (err) {
+          console.error('Error abriendo enlace compartido:', err);
+          showToast(`No se pudo abrir el enlace compartido: ${err.message}`);
+          return false;
+        }
+      };
+
+      global.addEventListener('hashchange', () => {
+        if (tryLoadFromUrlHash) tryLoadFromUrlHash();
       });
     }
 
@@ -2319,7 +2701,9 @@
 
     bindEvents();
     if (global.TopoI18n) global.TopoI18n.applyLanguage();
-    loadPanamaDemo();
+    Promise.resolve(tryLoadFromUrlHash ? tryLoadFromUrlHash() : false).then((loadedFromHash) => {
+      if (!loadedFromHash) loadPanamaDemo();
+    });
 
     // Puente para que las Calculadoras Geodésicas puedan graficar puntos directo en el mapa COGO
     global.TopoAppBridge = {

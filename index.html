@@ -8,7 +8,7 @@
 
   <!-- Leaflet CSS para Basemaps Satelital y OpenStreetMap -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/styles.css?v=20261127d" />
+  <link rel="stylesheet" href="css/styles.css?v=20261127e" />
 </head>
 <body>
   <div class="app-shell">
@@ -64,6 +64,14 @@
         <button id="btnOpenImport" class="btn btn-secondary cogo-only" title="Importar archivo CSV o TXT">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <span data-i18n="btnImport">Importar CSV/TXT</span>
+        </button>
+        <button id="btnOpenProjects" class="btn btn-ghost cogo-only" title="Guardar o abrir planos en tu navegador (Mis Planos)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          <span>Mis Planos</span>
+        </button>
+        <button id="btnOpenShare" class="btn btn-secondary cogo-only" title="Generar enlace compartible interactivo de este plano (sin servidor)">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          <span>Compartir</span>
         </button>
         <button id="btnOpenDxf" class="btn btn-primary cogo-only" title="Generar Plano ANATI (DXF con Layout y PDF Vectorial)">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -2003,20 +2011,94 @@
     </div>
   </dialog>
 
+  <!-- ==================== MODAL COMPARTIR PLANO POR ENLACE ==================== -->
+  <dialog id="shareDialog" class="modal">
+    <div class="modal-head">
+      <h2>🔗 Compartir Plano Interactivo por Enlace</h2>
+      <button class="icon-btn modal-close" data-close="shareDialog" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-note">
+        Cualquier persona que abra este enlace verá <strong>exactamente tu polígono, medidas, área, lotes y capas</strong> de forma dinámica en <strong>topografia.com.pa</strong>, pudiendo cambiar el mapa base, activar hojas IGN o descargar el PDF/DXF. Los datos viajan comprimidos en el propio link (<strong>sin servidor externo y sin caducidad</strong>).
+      </p>
+
+      <div class="row-actions mt-sm" style="flex-wrap:wrap;gap:14px;">
+        <label class="switch-inline">
+          <input id="shareOptAnati" type="checkbox" checked />
+          <span>Incluir Pie de Plano ANATI, Colindantes y Amarres</span>
+        </label>
+        <label class="switch-inline">
+          <input id="shareOptIgn" type="checkbox" checked />
+          <span>Incluir Hojas IGN activas y mapa base actual</span>
+        </label>
+      </div>
+
+      <label class="field mt-sm">
+        <span>Enlace Compartible Generado</span>
+        <textarea id="shareUrlOutput" class="share-url-box" rows="4" readonly></textarea>
+      </label>
+      <div id="shareUrlMeta" class="muted-meta mt-xs"></div>
+
+      <div class="row-actions mt-sm" style="flex-wrap:wrap;gap:8px;">
+        <button id="btnCopyShareUrl" type="button" class="btn btn-primary">📋 Copiar Enlace</button>
+        <a id="btnShareWhatsApp" href="#" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration:none;">💬 Enviar por WhatsApp</a>
+        <button id="btnQuickSaveFromShare" type="button" class="btn btn-ghost">💾 Guardar en Mis Planos</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted-meta">100% privado: ningún dato se guarda en servidores externos.</span>
+      <button class="btn btn-ghost" data-close="shareDialog">Cerrar</button>
+    </div>
+  </dialog>
+
+  <!-- ==================== MODAL MIS PLANOS (GUARDADO LOCAL + JSON) ==================== -->
+  <dialog id="projectsDialog" class="modal modal-wide">
+    <div class="modal-head">
+      <h2>💾 Mis Planos Guardados</h2>
+      <button class="icon-btn modal-close" data-close="projectsDialog" aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-note">
+        Guarda tus levantamientos en este navegador para reabrirlos en cualquier momento, generarles un enlace compartible o descargar un respaldo <code>.topo.json</code>.
+      </p>
+
+      <div class="row-actions mt-sm" style="gap:8px;flex-wrap:wrap;">
+        <input id="projSaveName" type="text" style="flex:1;min-width:220px;" placeholder="Nombre del plano (ej. Finca_Boquete_Folio45786)" />
+        <button id="btnSaveCurrentProj" type="button" class="btn btn-primary">💾 Guardar Plano Actual</button>
+      </div>
+
+      <div class="row-actions mt-xs" style="justify-content:space-between;flex-wrap:wrap;gap:6px;">
+        <div class="form-section-title" style="margin:0;">Planos en este navegador (<span id="savedProjectsCount">0</span>)</div>
+        <div class="row-actions" style="gap:6px;">
+          <button id="btnExportProjJson" type="button" class="chip-btn" title="Descargar archivo de respaldo .topo.json">⬇ Respaldo .JSON</button>
+          <button id="btnImportProjJson" type="button" class="chip-btn" title="Cargar archivo de respaldo .topo.json">⬆ Cargar .JSON</button>
+          <input id="projJsonFileInput" type="file" accept=".json,.topo.json" class="hidden" />
+        </div>
+      </div>
+
+      <div id="savedProjectsList" class="saved-proj-list mt-xs"></div>
+    </div>
+    <div class="modal-foot">
+      <span class="muted-meta">Los planos se guardan localmente en tu navegador (localStorage).</span>
+      <button class="btn btn-ghost" data-close="projectsDialog">Cerrar</button>
+    </div>
+  </dialog>
+
   <!-- Toast de notificaciones -->
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
   <!-- Scripts (ordenados sin dependencias de bundler: funciona en servidor y local) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/geodesy.js?v=20261127d"></script>
-  <script src="js/cogo.js?v=20261127d"></script>
-  <script src="js/ign.js?v=20261127d"></script>
-  <script src="js/dxf.js?v=20261127d"></script>
-  <script src="js/pdf.js?v=20261127d"></script>
-  <script src="js/io.js?v=20261127d"></script>
-  <script src="js/i18n.js?v=20261127d"></script>
-  <script src="js/map.js?v=20261127d"></script>
-  <script src="js/calculators.js?v=20261127d"></script>
-  <script src="js/app.js?v=20261127d"></script>
+  <script src="js/geodesy.js?v=20261127e"></script>
+  <script src="js/cogo.js?v=20261127e"></script>
+  <script src="js/ign.js?v=20261127e"></script>
+  <script src="js/dxf.js?v=20261127e"></script>
+  <script src="js/pdf.js?v=20261127e"></script>
+  <script src="js/io.js?v=20261127e"></script>
+  <script src="js/i18n.js?v=20261127e"></script>
+  <script src="js/map.js?v=20261127e"></script>
+  <script src="js/calculators.js?v=20261127e"></script>
+  <script src="js/share.js?v=20261127e"></script>
+  <script src="js/app.js?v=20261127e"></script>
 </body>
 </html>
