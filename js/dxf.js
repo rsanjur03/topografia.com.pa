@@ -40,16 +40,58 @@
     return `${has} HAS + ${remStr} m2`;
   }
 
-  /** Selecciona una escala topográfica estándar (1:100 .. 1:10000) que encaje en la ventana W x H (mm) */
+  /** Selecciona una escala oficial ANATI Panamá (100, 200, 250, 300..1000 y múltiplos) */
   function computeBestScale(spanE, spanN, winWmm = 230, winHmm = 290) {
-    const standards = [100, 150, 200, 250, 300, 400, 500, 750, 1000, 1250, 1500, 2000, 2500, 3000, 5000, 7500, 10000, 15000, 20000, 25000, 50000];
+    const standards = [
+      100, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000,
+      2000, 2500, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
+      20000, 25000, 30000, 40000, 50000
+    ];
     const reqScaleE = (spanE * 1000) / (winWmm * 0.78);
     const reqScaleN = (spanN * 1000) / (winHmm * 0.78);
     const req = Math.max(reqScaleE, reqScaleN, 100);
     for (const s of standards) {
       if (s >= req) return s;
     }
-    return Math.ceil(req / 1000) * 1000;
+    return Math.ceil(req / 10000) * 10000;
+  }
+
+  /** Calcula el signo de orientación del polígono (+1 CCW, -1 CW) para obtener normales exteriores exactas */
+  function getPolygonOrientationSign(points) {
+    if (!points || points.length < 3) return 1;
+    let s2 = 0;
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i];
+      const b = points[(i + 1) % points.length];
+      s2 += a.e * b.n - b.e * a.n;
+    }
+    return s2 >= 0 ? 1 : -1;
+  }
+
+  /** Normal unitaria hacia AFUERA del polígono para un tramo from -> to */
+  function getOutwardNormal(leg, orientSign) {
+    const len = Math.hypot(leg.dE, leg.dN) || 1;
+    // orientSign > 0 (CCW): exterior a la derecha (+dN, -dE); CW: exterior a la izquierda (-dN, +dE)
+    return orientSign >= 0
+      ? { nx: leg.dN / len, ny: -leg.dE / len }
+      : { nx: -leg.dN / len, ny: leg.dE / len };
+  }
+
+  /** Normaliza lista de propietarios / adquirientes (1 o más) */
+  function normalizeAnatiParties(a = {}) {
+    if (Array.isArray(a.parties) && a.parties.length > 0) {
+      return a.parties
+        .map(p => ({
+          name: String(p.name || '').trim(),
+          cedula: String(p.cedula || '').trim(),
+          role: String(p.role || 'PROPIETARIO').toUpperCase()
+        }))
+        .filter(p => p.name || p.cedula);
+    }
+    const list = [];
+    if (a.propietario) list.push({ name: a.propietario, cedula: a.cedPropietario || '', role: 'PROPIETARIO' });
+    if (a.favorDe) list.push({ name: a.favorDe, cedula: a.cedFavorDe || '', role: 'ADQUIRIENTE' });
+    return list;
   }
 
   function getNiceGridStep(span) {
@@ -312,7 +354,10 @@
       { name: 'TOPO_CUADRO_DATOS', color: 7, ltype: 'CONTINUOUS' },
       { name: 'TOPO_CUADRO_TEXTO', color: 2, ltype: 'CONTINUOUS' },
       { name: 'TOPO_NORTE', color: 7, ltype: 'CONTINUOUS' },
-      { name: 'TOPO_CUADRICULA', color: 8, ltype: 'CONTINUOUS' }
+      { name: 'TOPO_CUADRICULA', color: 8, ltype: 'CONTINUOUS' },
+      { name: 'TOPO_SERVIDUMBRE', color: 8, ltype: 'DASHED' },
+      { name: 'TOPO_RODADURA', color: 7, ltype: 'CONTINUOUS' },
+      { name: 'TOPO_COLINDANTES', color: 2, ltype: 'CONTINUOUS' }
     ];
 
     dxf.pair(0, 'TABLE');
@@ -442,6 +487,17 @@
       }
     }
 
+    // 4b. Calles / Servidumbres y Colindantes en Model Space (1:1 en metros)
+    drawDxfBoundaries(dxf, {
+      metrics,
+      boundaries: state.boundaries || options.boundaries || {},
+      orientSign: getPolygonOrientationSign(points),
+      toCoord: (e, n) => ({ e, n }),
+      textH: baseTextH * 0.72,
+      space: 0,
+      scaleFactor: 1.0
+    });
+
     // 5. Curvas y auxiliares
     if (state.curves && state.curves.length > 0) {
       for (const curve of state.curves) {
@@ -557,11 +613,32 @@
    *  - Ventana principal x=195..460, y=110..460: Dibujo del polígono a escala exacta 1:E + Cuadrícula UTM + Escala Gráfica
    */
   function drawAnatiPaperSpace(dxf, state, options, ctx) {
-    const { points, closed, metrics, minE, maxE, minN, maxN, spanE, spanN } = ctx;
+    const { points, closed, metrics } = ctx;
+    let { minE, maxE, minN, maxN } = ctx;
     const S = 1; // Paper Space (67 = 1)
     const a = options.anati || {};
 
-    // Escala exacta del plano (ej. 500, 1000, 2000...)
+    // Expandir Bounding Box para incluir servidumbres viales y colindantes
+    const boundaries = state.boundaries || options.boundaries || {};
+    const orientSign = getPolygonOrientationSign(points);
+    for (const leg of (metrics.legs || [])) {
+      const bnd = boundaries[`${leg.fromId}->${leg.toId}`];
+      if (!bnd || !bnd.type || bnd.type === 'none') continue;
+      const out = getOutwardNormal(leg, orientSign);
+      const padM = bnd.type === 'road' ? (Math.max(4, Number(bnd.servWidth) || 15) + 4) : 12;
+      for (const ep of [leg.from, leg.to]) {
+        const oe = ep.e + out.nx * padM;
+        const on = ep.n + out.ny * padM;
+        if (oe < minE) minE = oe;
+        if (oe > maxE) maxE = oe;
+        if (on < minN) minN = on;
+        if (on > maxN) maxN = on;
+      }
+    }
+    const spanE = Math.max(maxE - minE, 10);
+    const spanN = Math.max(maxN - minN, 10);
+
+    // Escala exacta del plano ANATI (100, 200, 250, 300..1000 y múltiplos)
     const autoScale = computeBestScale(spanE, spanN, 245, 315);
     const scaleDenom = (a.scale && Number(a.scale) > 0) ? Number(a.scale) : autoScale;
     const mmPerMeter = 1000 / scaleDenom; // 1 m en terreno = (1000 / E) mm en papel
@@ -570,36 +647,50 @@
     dxf.addRect('MARCO_Y_LEYENDAS', 0, 0, 620, 470, S);
     dxf.addRect('MARCO_Y_LEYENDAS', 10, 10, 610, 460, S);
 
-    // 2. DIVISIONES PRINCIPALES DEL FORMATO ANATI
-    // Línea horizontal superior de la franja inferior (y = 110)
+    // 2. DIVISIONES PRINCIPALES DEL FORMATO ANATI (SELLO / REVISION = 10 cm x 10 cm exactos: x=360..460, y=10..110)
     dxf.addLine('CUADROS', 10, 110, 610, 110, 0, 0, null, S);
-    // Separadores verticales de la franja inferior
-    dxf.addLine('CUADROS', 370, 10, 370, 110, 0, 0, null, S);
+    dxf.addLine('CUADROS', 360, 10, 360, 110, 0, 0, null, S);
     dxf.addLine('CUADROS', 460, 10, 460, 110, 0, 0, null, S);
-    // Separador vertical de la columna derecha (datos de campo / notas)
     dxf.addLine('CUADROS', 460, 110, 460, 460, 0, 0, null, S);
 
-    // 3. FRANJA INFERIOR IZQUIERDA (x=10..370, y=10..110): APROBACIÓN ANATI + FIRMA PROPIETARIO
-    dxf.addText('MARCO_Y_LEYENDAS', 'ESPACIO RESERVADO PARA APROBACION ANATI', 135, 98, 2.6, 0, 1, 2, S);
-    dxf.addRect('CUADROS', 18, 18, 250, 92, S);
+    // 3. FRANJA INFERIOR IZQUIERDA (x=10..360, y=10..110): APROBACIÓN ANATI + FIRMAS PROPIETARIOS/ADQUIRIENTES
+    dxf.addText('MARCO_Y_LEYENDAS', 'ESPACIO RESERVADO PARA APROBACION ANATI', 110, 99, 2.4, 0, 1, 2, S);
+    dxf.addRect('CUADROS', 16, 16, 204, 94, S);
 
-    // Bloque de firma del propietario/adquiriente (x=258..365)
-    dxf.addLine('MARCO_Y_LEYENDAS', 268, 40, 360, 40, 0, 0, null, S);
-    const propFirma = (a.favorDe || a.propietario || 'PROPIETARIO / ADQUIRIENTE').toUpperCase();
-    const cedFirma = a.cedFavorDe || a.cedPropietario || '';
-    dxf.addText('MARCO_Y_LEYENDAS', propFirma, 314, 34, 2.3, 0, 1, 2, S);
-    if (cedFirma) dxf.addText('MARCO_Y_LEYENDAS', `CED. ${cedFirma}`, 314, 29.5, 2.2, 0, 1, 2, S);
-    dxf.addText('MARCO_Y_LEYENDAS', 'PROPIETARIO / ADQUIRIENTE', 314, 24.5, 2.1, 0, 1, 2, S);
+    // Bloque de firmas (1 o más propietarios / adquirientes en x=208..356, y=12..106)
+    const parties = normalizeAnatiParties(a);
+    const sigList = parties.length > 0
+      ? parties
+      : [{ name: 'PROPIETARIO / ADQUIRIENTE', cedula: '', role: 'PROPIETARIO' }];
+    const sigCols = sigList.length <= 2 ? 1 : 2;
+    const sigRows = Math.ceil(sigList.length / sigCols);
+    const areaX0 = 208, areaW = 148, areaY0 = 12, areaH = 92;
+    const cellW = areaW / sigCols;
+    const cellH = areaH / sigRows;
+    const sFont = sigList.length <= 2 ? 2.1 : (sigList.length <= 4 ? 1.8 : 1.55);
 
-    // Bloque central de sellos/revisión (x=370..460, y=10..110)
-    dxf.addText('MARCO_Y_LEYENDAS', 'SELLO / REVISION', 415, 98, 2.2, 0, 1, 2, S);
+    sigList.forEach((p, idx) => {
+      const col = idx % sigCols;
+      const row = Math.floor(idx / sigCols);
+      const cx = areaX0 + (col + 0.5) * cellW;
+      const yTop = areaY0 + areaH - row * cellH;
+      const lineY = yTop - cellH * 0.44;
+      const halfLine = Math.min(44, cellW * 0.42);
+      dxf.addLine('MARCO_Y_LEYENDAS', cx - halfLine, lineY, cx + halfLine, lineY, 0, 0, null, S);
+      const step = sFont * 1.65;
+      dxf.addText('MARCO_Y_LEYENDAS', (p.name || '---').toUpperCase(), cx, lineY - step, sFont, 0, 1, 2, S);
+      dxf.addText('MARCO_Y_LEYENDAS', p.cedula ? `CED. ${p.cedula.toUpperCase()}` : 'CED. ____________', cx, lineY - step * 2, sFont * 0.92, 0, 1, 2, S);
+      dxf.addText('MARCO_Y_LEYENDAS', p.role.toUpperCase(), cx, lineY - step * 3, sFont * 0.88, 0, 1, 2, S);
+    });
+
+    // Bloque central de sellos/revisión (EXACTO 10 cm x 10 cm: x=360..460, y=10..110)
+    dxf.addText('MARCO_Y_LEYENDAS', 'SELLO / REVISION', 410, 99, 2.2, 0, 1, 2, S);
 
     // 4. PIE DE PLANO / CAJETÍN OFICIAL ANATI (x=460..610, y=10..110)
-    // Divisiones horizontales exactas según ejemplo.dxf
-    dxf.addLine('MARCO_Y_LEYENDAS', 460, 94.5, 610, 94.5, 0, 0, null, S); // Bajo Provincia/Distrito
-    dxf.addLine('MARCO_Y_LEYENDAS', 460, 55.2, 610, 55.2, 0, 0, null, S); // Arriba de AREA
-    dxf.addLine('MARCO_Y_LEYENDAS', 460, 50.2, 610, 50.2, 0, 0, null, S); // Bajo AREA
-    dxf.addLine('MARCO_Y_LEYENDAS', 536.3, 10, 536.3, 50.2, 0, 0, null, S); // División Profesional | Firma/Sello
+    dxf.addLine('MARCO_Y_LEYENDAS', 460, 94.5, 610, 94.5, 0, 0, null, S);
+    dxf.addLine('MARCO_Y_LEYENDAS', 460, 55.2, 610, 55.2, 0, 0, null, S);
+    dxf.addLine('MARCO_Y_LEYENDAS', 460, 50.2, 610, 50.2, 0, 0, null, S);
+    dxf.addLine('MARCO_Y_LEYENDAS', 536.3, 10, 536.3, 50.2, 0, 0, null, S);
 
     // 4a. Cabecera República de Panamá + Ubicación Política
     dxf.addText('MARCO_Y_LEYENDAS', 'REPUBLICA DE PANAMA', 535, 105.5, 3.8, 0, 1, 2, S);
@@ -608,28 +699,38 @@
     dxf.addText('MARCO_Y_LEYENDAS', `Distrito: ${(a.distrito || 'DAVID').toUpperCase()}`, 540, 100.3, 2.3, 0, 0, 2, S);
     dxf.addText('MARCO_Y_LEYENDAS', `Lugar: ${(a.lugar || 'DAVID').toUpperCase()}`, 540, 96.3, 2.3, 0, 0, 2, S);
 
-    // 4b. Cuerpo descriptivo (Tipo de plano, Folio Real, Código Ubicación, Propiedad de, A favor de)
+    // 4b. Cuerpo descriptivo (Tipo de plano, Folio Real, Código Ubicación, Propietarios y Adquirientes)
     const tipoPlano = (a.tipoPlano || 'LEVANTAMIENTO TOPOGRAFICO').toUpperCase();
     const folioStr = a.folioReal ? ` DEL FOLIO REAL ${a.folioReal}` : '';
     const codUbStr = a.codUbicacion ? `, COD. DE UBICACION ${a.codUbicacion}` : '';
     const descLines = wrapLines(`${tipoPlano}${folioStr}${codUbStr}`, 44);
-    let dy = 89.5;
-    for (const ln of descLines.slice(0, 3)) {
-      dxf.addText('MARCO_Y_LEYENDAS', ln, 535, dy, 2.5, 0, 1, 2, S);
-      dy -= 4.2;
+    let dy = 90.0;
+    const ownersList = parties.filter(p => p.role === 'PROPIETARIO' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+    const buyersList = parties.filter(p => p.role === 'ADQUIRIENTE' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+    const denseParties = (ownersList.length + buyersList.length) > 3;
+    const pFont = denseParties ? 1.85 : 2.15;
+    const pStep = denseParties ? 3.0 : 3.5;
+
+    for (const ln of descLines.slice(0, 2)) {
+      dxf.addText('MARCO_Y_LEYENDAS', ln, 535, dy, 2.35, 0, 1, 2, S);
+      dy -= 3.8;
     }
-    if (a.propietario) {
-      const pLine = `PROPIEDAD DE: ${a.propietario.toUpperCase()}${a.cedPropietario ? `, CED. ${a.cedPropietario}` : ''}`;
-      for (const ln of wrapLines(pLine, 46).slice(0, 2)) {
-        dxf.addText('MARCO_Y_LEYENDAS', ln, 535, dy, 2.2, 0, 1, 2, S);
-        dy -= 3.8;
+    if (ownersList.length > 0) {
+      const pTxt = 'PROPIEDAD DE: ' + ownersList.map(p => `${p.name.toUpperCase()}${p.cedula ? ` (CED. ${p.cedula.toUpperCase()})` : ''}`).join('; ');
+      for (const ln of wrapLines(pTxt, denseParties ? 54 : 46).slice(0, 3)) {
+        if (dy < 57.5) break;
+        dxf.addText('MARCO_Y_LEYENDAS', ln, 535, dy, pFont, 0, 1, 2, S);
+        dy -= pStep;
       }
     }
-    if (a.favorDe) {
-      dxf.addText('MARCO_Y_LEYENDAS', 'A FAVOR DE:', 535, Math.min(dy - 1, 66.5), 2.3, 0, 1, 2, S);
-      dxf.addText('MARCO_Y_LEYENDAS', a.favorDe.toUpperCase(), 535, Math.min(dy - 5, 62.5), 2.6, 0, 1, 2, S);
-      if (a.cedFavorDe) {
-        dxf.addText('MARCO_Y_LEYENDAS', `CED. ${a.cedFavorDe}`, 535, Math.min(dy - 9, 58.2), 2.2, 0, 1, 2, S);
+    if (buyersList.length > 0 && dy >= 60) {
+      dxf.addText('MARCO_Y_LEYENDAS', 'A FAVOR DE:', 535, dy - 0.5, pFont, 0, 1, 2, S);
+      dy -= pStep;
+      const bTxt = buyersList.map(p => `${p.name.toUpperCase()}${p.cedula ? ` (CED. ${p.cedula.toUpperCase()})` : ''}`).join('; ');
+      for (const ln of wrapLines(bTxt, denseParties ? 54 : 46).slice(0, 3)) {
+        if (dy < 57.0) break;
+        dxf.addText('MARCO_Y_LEYENDAS', ln, 535, dy, pFont, 0, 1, 2, S);
+        dy -= pStep;
       }
     }
 
@@ -709,17 +810,18 @@
       '- LAS DISTANCIAS ESTAN DADAS EN METROS.',
       a.equipo ? `- EQUIPO UTILIZADO: ${a.equipo.toUpperCase()}.` : '- LEVANTAMIENTO REALIZADO CON EQUIPO TOPOGRAFICO DE PRECISION.',
       a.monumentacion ? `- MONUMENTACION: ${a.monumentacion.toUpperCase()}.` : '- TODOS LOS VERTICES DEBIDAMENTE MONUMENTADOS.',
-      a.planoRef ? `- PLANO DE REFERENCIA: ${a.planoRef.toUpperCase()}.` : '',
-      a.notaExtra ? `- ${a.notaExtra.toUpperCase()}` : ''
+      a.notaExtra ? `- ${a.notaExtra.toUpperCase()}` : '',
+      `- PLANO DE REFERENCIA N°: ${a.planoRef ? a.planoRef.toUpperCase() : '____________________'}`,
+      `- FECHA DE APROBACION: ${a.fechaAprobacion ? a.fechaAprobacion.toUpperCase() : '____________________'}`
     ].filter(Boolean);
 
     for (const item of noteItems) {
-      for (const ln of wrapLines(item, 56)) {
-        if (ny < 114) break;
-        dxf.addText('MARCO_Y_LEYENDAS', ln, 466, ny, 2.0, 0, 0, 2, S);
-        ny -= 4.2;
+      for (const ln of wrapLines(item, 58)) {
+        if (ny < 113) break;
+        dxf.addText('MARCO_Y_LEYENDAS', ln, 466, ny, 1.9, 0, 0, 2, S);
+        ny -= 3.7;
       }
-      ny -= 1.0;
+      ny -= 0.7;
     }
 
     // 6. CUADROS LATERALES IZQUIERDOS (x=15..190, y=115..455): LOCALIZACION REGIONAL + DETALLE DE AMARRE
@@ -819,6 +921,17 @@
         dxf.addText('TOPO_RUMBOS_DIST', `${leg.dist.toFixed(2)} m`, mx - nx * 2.2, my - ny * 2.2, 1.9, ang, 1, 2, S);
       }
     }
+
+    // Calles / Servidumbres y Colindantes en Paper Space (escala exacta 1:E)
+    drawDxfBoundaries(dxf, {
+      metrics,
+      boundaries: state.boundaries || options.boundaries || {},
+      orientSign: getPolygonOrientationSign(points),
+      toCoord: (e, n) => toPaper(e, n),
+      textH: 1.85,
+      space: S,
+      scaleFactor: mmPerMeter
+    });
 
     // División de lotes en Paper Space
     if (state.lotDivision && state.lotDivision.ok) {
@@ -1050,9 +1163,91 @@
     return y;
   }
 
+  /** Dibuja Calles/Servidumbres (servidumbre + rodadura + material) y Colindantes Fincas en DXF (Model o Paper Space) */
+  function drawDxfBoundaries(dxf, { metrics, boundaries, orientSign, toCoord, textH, space, scaleFactor }) {
+    if (!boundaries || !metrics || !metrics.legs) return;
+    for (const leg of metrics.legs) {
+      if (leg.dist < 1e-4) continue;
+      const bnd = boundaries[`${leg.fromId}->${leg.toId}`];
+      if (!bnd || !bnd.type || bnd.type === 'none') continue;
+
+      const out = getOutwardNormal(leg, orientSign);
+      const tx = leg.dE / leg.dist;
+      const ty = leg.dN / leg.dist;
+      let ang = Math.atan2(leg.dN, leg.dE) * (180 / Math.PI);
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+
+      if (bnd.type === 'road') {
+        const servW = Math.max(2, Number(bnd.servWidth) || 15);
+        const roadW = Math.min(servW - 0.3, Math.max(1, Number(bnd.roadWidth) || 6));
+        const mat = String(bnd.material || 'ASFALTO').toUpperCase();
+        const roadName = String(bnd.roadName || 'CALLE PUBLICA').toUpperCase();
+        const extM = Math.min(leg.dist * 0.14, 14);
+        const eA = leg.from.e - tx * extM, nA = leg.from.n - ty * extM;
+        const eB = leg.to.e + tx * extM, nB = leg.to.n + ty * extM;
+
+        const ptAt = (e, n, offM) => toCoord(e + out.nx * offM, n + out.ny * offM);
+        // Borde exterior de servidumbre
+        const s3 = ptAt(eA, nA, servW), s2 = ptAt(eB, nB, servW);
+        dxf.addLine('TOPO_SERVIDUMBRE', s3.e, s3.n, s2.e, s2.n, 0, 0, null, space);
+        // Bordes de rodadura
+        const rStart = (servW - roadW) / 2, rEnd = (servW + roadW) / 2;
+        const r0 = ptAt(eA, nA, rStart), r1 = ptAt(eB, nB, rStart);
+        const r3 = ptAt(eA, nA, rEnd), r2 = ptAt(eB, nB, rEnd);
+        dxf.addLine('TOPO_RODADURA', r0.e, r0.n, r1.e, r1.n, 0, 0, null, space);
+        dxf.addLine('TOPO_RODADURA', r3.e, r3.n, r2.e, r2.n, 0, 0, null, space);
+        // Eje central
+        const c0 = ptAt(eA, nA, servW / 2), c1 = ptAt(eB, nB, servW / 2);
+        dxf.addLine('TOPO_SERVIDUMBRE', c0.e, c0.n, c1.e, c1.n, 0, 0, null, space);
+
+        // Textos
+        const midE = (leg.from.e + leg.to.e) / 2;
+        const midN = (leg.from.n + leg.to.n) / 2;
+        const pLbl1 = ptAt(midE, midN, servW / 2);
+        const pLbl2 = ptAt(midE, midN, servW / 2 + (textH * 1.6) / Math.max(scaleFactor, 1e-6));
+        dxf.addText('TOPO_COLINDANTES', roadName, pLbl1.e, pLbl1.n, textH * 1.1, ang, 1, 2, space);
+        dxf.addText('TOPO_COLINDANTES', `SERV. ${servW.toFixed(2)}m - RODADURA ${mat} ${roadW.toFixed(2)}m`, pLbl2.e, pLbl2.n, textH * 0.9, ang, 1, 2, space);
+      } else if (bnd.type === 'parcel' || bnd.type === 'custom') {
+        const tickM = Math.max((textH * 2.8) / Math.max(scaleFactor, 1e-6), 3);
+        const f0 = toCoord(leg.from.e, leg.from.n);
+        const f1 = toCoord(leg.from.e + out.nx * tickM, leg.from.n + out.ny * tickM);
+        const t0 = toCoord(leg.to.e, leg.to.n);
+        const t1 = toCoord(leg.to.e + out.nx * tickM, leg.to.n + out.ny * tickM);
+        dxf.addLine('TOPO_SERVIDUMBRE', f0.e, f0.n, f1.e, f1.n, 0, 0, null, space);
+        dxf.addLine('TOPO_SERVIDUMBRE', t0.e, t0.n, t1.e, t1.n, 0, 0, null, space);
+
+        const lines = [];
+        if (bnd.type === 'parcel') {
+          if (bnd.folioReal) lines.push(`FOLIO REAL: ${String(bnd.folioReal).toUpperCase()}`);
+          if (bnd.codUbicacion) lines.push(`COD. DE UBICACION: ${String(bnd.codUbicacion).toUpperCase()}`);
+          if (bnd.owner) lines.push(`PROPIEDAD DE: ${String(bnd.owner).toUpperCase()}`);
+          if (lines.length === 0) lines.push('FINCA COLINDANTE');
+        } else if (bnd.customText) {
+          lines.push(String(bnd.customText).toUpperCase());
+        }
+
+        const midE = (leg.from.e + leg.to.e) / 2;
+        const midN = (leg.from.n + leg.to.n) / 2;
+        const pMid = toCoord(midE, midN);
+        const baseOff = textH * 4.2;
+        const step = textH * 1.65;
+        const outUp = out.ny >= 0;
+        const ordered = outUp ? [...lines].reverse() : lines;
+        ordered.forEach((ln, idx) => {
+          const d = baseOff + idx * step;
+          dxf.addText('TOPO_COLINDANTES', ln, pMid.e + out.nx * d, pMid.n + out.ny * d, textH, ang, 1, 2, space);
+        });
+      }
+    }
+  }
+
   global.TopoDXF = {
     generateDXF,
     formatAnatiArea,
-    computeBestScale
+    computeBestScale,
+    getPolygonOrientationSign,
+    getOutwardNormal,
+    normalizeAnatiParties
   };
 })(window);

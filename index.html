@@ -8,7 +8,7 @@
 
   <!-- Leaflet CSS para Basemaps Satelital y OpenStreetMap -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/styles.css?v=20261127b" />
+  <link rel="stylesheet" href="css/styles.css?v=20261127c" />
 </head>
 <body>
   <div class="app-shell">
@@ -1652,6 +1652,7 @@
         <h2 data-i18n="modDxfTitle">Plano ANATI · Exportar DXF y PDF</h2>
         <div class="segmented" id="dxfModalTabs">
           <button type="button" class="seg-btn active" data-dxf-tab="anati" data-i18n="tabAnatiForm">Pie de Plano ANATI</button>
+          <button type="button" class="seg-btn" data-dxf-tab="boundaries">🛣️ Colindantes y Calles</button>
           <button type="button" class="seg-btn" data-dxf-tab="layers" data-i18n="tabDxfLayers">Capas y Papel</button>
         </div>
       </div>
@@ -1686,7 +1687,7 @@
         </div>
 
         <div class="form-section-title mt-sm" data-i18n="secAnatiParcel">Datos de la Finca / Operación</div>
-        <div class="grid-3 mt-xs">
+        <div class="grid-4 mt-xs">
           <label class="field">
             <span>Tipo de Plano / Operación</span>
             <select id="anatiTipoPlano">
@@ -1705,31 +1706,17 @@
             <span>Código de Ubicación</span>
             <input id="anatiCodUbic" type="text" placeholder="Ej. 4201" />
           </label>
-        </div>
-        <div class="grid-2 mt-xs">
-          <label class="field">
-            <span>Propietario(s)</span>
-            <input id="anatiPropietario" type="text" placeholder="Nombre del propietario" />
-          </label>
-          <label class="field">
-            <span>Cédula / RUC Propietario</span>
-            <input id="anatiCedProp" type="text" placeholder="Ej. 4-000-000" />
-          </label>
-        </div>
-        <div class="grid-3 mt-xs">
-          <label class="field">
-            <span>A Favor de (Adquiriente)</span>
-            <input id="anatiFavorDe" type="text" placeholder="Opcional (si aplica)" />
-          </label>
-          <label class="field">
-            <span>Cédula Adquiriente</span>
-            <input id="anatiCedFavor" type="text" placeholder="Ej. 4-000-000" />
-          </label>
           <label class="field">
             <span>Área Inscrita Finca Madre (m²)</span>
-            <input id="anatiAreaInscrita" type="number" step="0.01" placeholder="Opcional (calcula Resto Libre)" />
+            <input id="anatiAreaInscrita" type="number" step="0.01" placeholder="Opcional (Resto Libre)" />
           </label>
         </div>
+
+        <div class="row-actions mt-sm" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+          <div class="form-section-title" style="margin:0;">Propietarios y Adquirientes (1 o más · aparecen en cajetín y firmas)</div>
+          <button id="btnAddAnatiParty" type="button" class="chip-btn">+ Agregar Propietario / Adquiriente</button>
+        </div>
+        <div id="anatiPartiesList" class="anati-parties-list mt-xs"></div>
 
         <div class="form-section-title mt-sm" data-i18n="secAnatiProf">Profesional Idóneo y Escala (se guarda automáticamente)</div>
         <div class="grid-4 mt-xs">
@@ -1756,18 +1743,31 @@
             <input id="anatiProfLicencia" type="text" placeholder="Ej. 2007-006-076" />
           </label>
           <label class="field">
-            <span>Escala del Plano</span>
+            <span>Escala del Plano (ANATI)</span>
             <select id="anatiScale">
-              <option value="auto" selected>Automática</option>
+              <option value="auto" selected>Automática (ANATI)</option>
               <option value="100">1 : 100</option>
               <option value="200">1 : 200</option>
               <option value="250">1 : 250</option>
+              <option value="300">1 : 300</option>
+              <option value="400">1 : 400</option>
               <option value="500">1 : 500</option>
-              <option value="750">1 : 750</option>
+              <option value="600">1 : 600</option>
+              <option value="700">1 : 700</option>
+              <option value="800">1 : 800</option>
+              <option value="900">1 : 900</option>
               <option value="1000">1 : 1,000</option>
-              <option value="1500">1 : 1,500</option>
               <option value="2000">1 : 2,000</option>
+              <option value="2500">1 : 2,500</option>
+              <option value="3000">1 : 3,000</option>
+              <option value="4000">1 : 4,000</option>
               <option value="5000">1 : 5,000</option>
+              <option value="6000">1 : 6,000</option>
+              <option value="8000">1 : 8,000</option>
+              <option value="10000">1 : 10,000</option>
+              <option value="20000">1 : 20,000</option>
+              <option value="25000">1 : 25,000</option>
+              <option value="50000">1 : 50,000</option>
             </select>
           </label>
           <label class="field">
@@ -1795,14 +1795,18 @@
             <input id="anatiMonumentacion" type="text" value='VARILLA DE ACERO DE 1/2"' />
           </label>
         </div>
-        <div class="grid-2 mt-xs">
+        <div class="grid-3 mt-xs">
           <label class="field">
-            <span>Plano de Referencia</span>
-            <input id="anatiPlanoRef" type="text" placeholder="Opcional (ej. 42-4937)" />
+            <span>Plano de Referencia N°</span>
+            <input id="anatiPlanoRef" type="text" placeholder="Vacío imprime línea ______" />
+          </label>
+          <label class="field">
+            <span>Fecha de Aprobación</span>
+            <input id="anatiFechaAprobacion" type="text" placeholder="Vacío imprime línea ______" />
           </label>
           <label class="field">
             <span>Nota Adicional</span>
-            <input id="anatiNotaExtra" type="text" placeholder="Observaciones adicionales para ANATI" />
+            <input id="anatiNotaExtra" type="text" placeholder="Observaciones adicionales" />
           </label>
         </div>
 
@@ -1847,7 +1851,15 @@
         <div id="anatiTieStatus" class="muted-meta mt-xs">Si se dejan vacíos, al descargar el PDF se buscarán automáticamente las 2 intersecciones de calles más cercanas (o puedes marcarlas directo sobre la hoja IGN).</div>
       </div>
 
-      <!-- SUB-TAB 2: CAPAS, FORMATO DXF Y TAMAÑO DE PAPEL PDF -->
+      <!-- SUB-TAB 2: COLINDANTES Y CALLES (SERVIDUMBRES / RODADURA / FINCAS VECINAS) -->
+      <div id="dxfTabBoundaries" class="hidden">
+        <p class="modal-note">
+          Define el colindante de cada lindero de tu poligonal. Si el lindero da a una <strong>Calle / Servidumbre</strong>, el plano (PDF y DXF) dibujará a escala real el <strong>ancho de servidumbre</strong>, el <strong>ancho de rodadura</strong> y su <strong>material</strong> (Asfalto, Concreto, Tierra). Si es una <strong>Finca Colindante</strong>, rotulará Folio Real, Código de Ubicación y Propietario paralelo al lindero.
+        </p>
+        <div id="anatiBoundariesList" class="anati-boundaries-list mt-sm"></div>
+      </div>
+
+      <!-- SUB-TAB 3: CAPAS, FORMATO DXF Y TAMAÑO DE PAPEL PDF -->
       <div id="dxfTabLayers" class="hidden">
         <div class="grid-3">
           <label class="field">
@@ -1996,15 +2008,15 @@
 
   <!-- Scripts (ordenados sin dependencias de bundler: funciona en servidor y local) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/geodesy.js?v=20261127b"></script>
-  <script src="js/cogo.js?v=20261127b"></script>
-  <script src="js/ign.js?v=20261127b"></script>
-  <script src="js/dxf.js?v=20261127b"></script>
-  <script src="js/pdf.js?v=20261127b"></script>
-  <script src="js/io.js?v=20261127b"></script>
-  <script src="js/i18n.js?v=20261127b"></script>
-  <script src="js/map.js?v=20261127b"></script>
-  <script src="js/calculators.js?v=20261127b"></script>
-  <script src="js/app.js?v=20261127b"></script>
+  <script src="js/geodesy.js?v=20261127c"></script>
+  <script src="js/cogo.js?v=20261127c"></script>
+  <script src="js/ign.js?v=20261127c"></script>
+  <script src="js/dxf.js?v=20261127c"></script>
+  <script src="js/pdf.js?v=20261127c"></script>
+  <script src="js/io.js?v=20261127c"></script>
+  <script src="js/i18n.js?v=20261127c"></script>
+  <script src="js/map.js?v=20261127c"></script>
+  <script src="js/calculators.js?v=20261127c"></script>
+  <script src="js/app.js?v=20261127c"></script>
 </body>
 </html>

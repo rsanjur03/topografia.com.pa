@@ -22,6 +22,7 @@
     auxLines: [],
     lotDivision: null,
     closureInfo: null,
+    boundaries: {},          // Colindantes por lado: key "fromId->toId" => { type, roadName, servWidth, roadWidth, material, folioReal, codUbicacion, owner, customText }
     traverseMode: 'bearing', // 'bearing' | 'azimuth' | 'coords'
     labelsVisible: true,
     editMode: false
@@ -1516,10 +1517,6 @@
       tipoPlano: 'anatiTipoPlano',
       folioReal: 'anatiFolio',
       codUbicacion: 'anatiCodUbic',
-      propietario: 'anatiPropietario',
-      cedPropietario: 'anatiCedProp',
-      favorDe: 'anatiFavorDe',
-      cedFavorDe: 'anatiCedFavor',
       areaInscrita: 'anatiAreaInscrita',
       profTitulo: 'anatiProfTitulo',
       profNombre: 'anatiProfNombre',
@@ -1532,8 +1529,182 @@
       equipo: 'anatiEquipo',
       monumentacion: 'anatiMonumentacion',
       planoRef: 'anatiPlanoRef',
+      fechaAprobacion: 'anatiFechaAprobacion',
       notaExtra: 'anatiNotaExtra'
     };
+
+    // Lista dinámica de Propietarios / Adquirientes (1 o más personas, cada una con Nombre, Cédula y Rol)
+    let anatiParties = [
+      { name: '', cedula: '', role: 'PROPIETARIO' }
+    ];
+
+    function renderAnatiPartiesList() {
+      const container = $('anatiPartiesList');
+      if (!container) return;
+      container.innerHTML = '';
+      anatiParties.forEach((p, idx) => {
+        const row = document.createElement('div');
+        row.className = 'anati-party-row';
+        row.innerHTML = `
+          <label class="field">
+            <span>${idx === 0 ? 'Nombre Completo' : `Persona ${idx + 1} · Nombre`}</span>
+            <input type="text" data-party-idx="${idx}" data-party-field="name" value="${(p.name || '').replace(/"/g, '&quot;')}" placeholder="Ej. Juan Pérez" />
+          </label>
+          <label class="field">
+            <span>Cédula / RUC</span>
+            <input type="text" data-party-idx="${idx}" data-party-field="cedula" value="${(p.cedula || '').replace(/"/g, '&quot;')}" placeholder="Ej. 4-716-307" />
+          </label>
+          <label class="field">
+            <span>Calidad / Rol</span>
+            <select data-party-idx="${idx}" data-party-field="role">
+              <option value="PROPIETARIO" ${p.role === 'PROPIETARIO' ? 'selected' : ''}>Propietario</option>
+              <option value="ADQUIRIENTE" ${p.role === 'ADQUIRIENTE' ? 'selected' : ''}>Adquiriente</option>
+              <option value="PROPIETARIO Y ADQUIRIENTE" ${p.role === 'PROPIETARIO Y ADQUIRIENTE' ? 'selected' : ''}>Propietario y Adquiriente</option>
+            </select>
+          </label>
+          <button type="button" class="tbl-act-btn del" data-party-del="${idx}" title="Quitar persona" ${anatiParties.length <= 1 ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>✕</button>
+        `;
+        container.appendChild(row);
+      });
+
+      container.querySelectorAll('[data-party-idx]').forEach(el => {
+        const sync = () => {
+          const idx = Number(el.dataset.partyIdx);
+          const field = el.dataset.partyField;
+          if (anatiParties[idx]) anatiParties[idx][field] = el.value;
+        };
+        el.addEventListener('input', sync);
+        el.addEventListener('change', sync);
+      });
+
+      container.querySelectorAll('[data-party-del]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (anatiParties.length <= 1) return;
+          anatiParties.splice(Number(btn.dataset.partyDel), 1);
+          renderAnatiPartiesList();
+        });
+      });
+    }
+
+    $('btnAddAnatiParty')?.addEventListener('click', () => {
+      anatiParties.push({ name: '', cedula: '', role: 'ADQUIRIENTE' });
+      renderAnatiPartiesList();
+    });
+
+    // Lista dinámica de Colindantes y Calles (1 tarjeta por lado de la poligonal)
+    function getLegBoundaryKey(leg, idx) {
+      return `${leg.fromId}->${leg.toId}`;
+    }
+
+    function renderAnatiBoundariesList() {
+      const container = $('anatiBoundariesList');
+      if (!container) return;
+      const closed = Boolean(state.closed) && state.points.length >= 3;
+      const metrics = C.polygonMetrics(state.points, closed);
+      container.innerHTML = '';
+
+      if (!metrics.legs || metrics.legs.length === 0) {
+        container.innerHTML = '<div class="muted-meta">Agrega al menos 2 puntos en la poligonal para definir colindantes y calles.</div>';
+        return;
+      }
+
+      metrics.legs.forEach((leg, idx) => {
+        const key = getLegBoundaryKey(leg, idx);
+        const cur = state.boundaries[key] || {
+          type: 'none',
+          roadName: 'CALLE PUBLICA',
+          servWidth: 15,
+          roadWidth: 6,
+          material: 'ASFALTO',
+          folioReal: '',
+          codUbicacion: '',
+          owner: '',
+          customText: ''
+        };
+
+        const card = document.createElement('div');
+        card.className = `boundary-card${cur.type === 'road' ? ' is-road' : cur.type === 'parcel' ? ' is-parcel' : ''}`;
+        card.innerHTML = `
+          <div class="boundary-card-head">
+            <span class="boundary-leg-tag">Lado ${idx + 1}: ${leg.fromId} → ${leg.toId} · ${leg.dist.toFixed(2)} m · ${leg.bearing}</span>
+            <select data-b-key="${key}" data-b-field="type" style="width:auto;min-width:190px;padding:4px 8px;font-size:12px;">
+              <option value="none" ${cur.type === 'none' ? 'selected' : ''}>Sin definir</option>
+              <option value="road" ${cur.type === 'road' ? 'selected' : ''}>🛣️ Calle / Servidumbre Vial</option>
+              <option value="parcel" ${cur.type === 'parcel' ? 'selected' : ''}>🏡 Finca Colindante (Folio Real)</option>
+              <option value="custom" ${cur.type === 'custom' ? 'selected' : ''}>📝 Otro (Río / Quebrada / Resto Libre)</option>
+            </select>
+          </div>
+          ${cur.type === 'road' ? `
+            <div class="grid-4 mt-xs">
+              <label class="field">
+                <span>Nombre de la Calle / Vía</span>
+                <input type="text" data-b-key="${key}" data-b-field="roadName" value="${(cur.roadName || '').replace(/"/g, '&quot;')}" placeholder="Ej. CALLE PUBLICA" />
+              </label>
+              <label class="field">
+                <span>Ancho Servidumbre (m)</span>
+                <input type="number" step="0.1" min="2" max="100" data-b-key="${key}" data-b-field="servWidth" value="${cur.servWidth ?? 15}" />
+              </label>
+              <label class="field">
+                <span>Ancho Rodadura (m)</span>
+                <input type="number" step="0.1" min="1" max="60" data-b-key="${key}" data-b-field="roadWidth" value="${cur.roadWidth ?? 6}" />
+              </label>
+              <label class="field">
+                <span>Material de Rodadura</span>
+                <select data-b-key="${key}" data-b-field="material">
+                  <option value="ASFALTO" ${cur.material === 'ASFALTO' ? 'selected' : ''}>Asfalto</option>
+                  <option value="CONCRETO" ${cur.material === 'CONCRETO' ? 'selected' : ''}>Concreto</option>
+                  <option value="TIERRA" ${cur.material === 'TIERRA' ? 'selected' : ''}>Tierra</option>
+                  <option value="TOSCA" ${cur.material === 'TOSCA' ? 'selected' : ''}>Tosca / Grava</option>
+                  <option value="ADOQUIN" ${cur.material === 'ADOQUIN' ? 'selected' : ''}>Adoquín</option>
+                </select>
+              </label>
+            </div>
+          ` : ''}
+          ${cur.type === 'parcel' ? `
+            <div class="grid-3 mt-xs">
+              <label class="field">
+                <span>Folio Real</span>
+                <input type="text" data-b-key="${key}" data-b-field="folioReal" value="${(cur.folioReal || '').replace(/"/g, '&quot;')}" placeholder="Ej. 12345" />
+              </label>
+              <label class="field">
+                <span>Código de Ubicación</span>
+                <input type="text" data-b-key="${key}" data-b-field="codUbicacion" value="${(cur.codUbicacion || '').replace(/"/g, '&quot;')}" placeholder="Ej. 4105" />
+              </label>
+              <label class="field">
+                <span>Propiedad de</span>
+                <input type="text" data-b-key="${key}" data-b-field="owner" value="${(cur.owner || '').replace(/"/g, '&quot;')}" placeholder="Ej. Juan Pérez" />
+              </label>
+            </div>
+          ` : ''}
+          ${cur.type === 'custom' ? `
+            <label class="field mt-xs">
+              <span>Texto del Colindante</span>
+              <input type="text" data-b-key="${key}" data-b-field="customText" value="${(cur.customText || '').replace(/"/g, '&quot;')}" placeholder="Ej. QUEBRADA SIN NOMBRE / RESTO LIBRE" />
+            </label>
+          ` : ''}
+        `;
+        container.appendChild(card);
+      });
+
+      container.querySelectorAll('[data-b-key]').forEach(el => {
+        const handler = () => {
+          const k = el.dataset.bKey;
+          const field = el.dataset.bField;
+          const base = state.boundaries[k] || {
+            type: 'none', roadName: 'CALLE PUBLICA', servWidth: 15, roadWidth: 6,
+            material: 'ASFALTO', folioReal: '', codUbicacion: '', owner: '', customText: ''
+          };
+          if (field === 'servWidth' || field === 'roadWidth') {
+            base[field] = parseFloat(el.value) || 0;
+          } else {
+            base[field] = el.value;
+          }
+          state.boundaries[k] = base;
+          if (field === 'type') renderAnatiBoundariesList();
+        };
+        el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', handler);
+      });
+    }
 
     const loadSavedAnatiProfile = () => {
       try {
@@ -1542,6 +1713,13 @@
         const saved = JSON.parse(raw);
         for (const [k, id] of Object.entries(anatiFieldIds)) {
           if (saved[k] !== undefined && $(id)) $(id).value = saved[k];
+        }
+        if (Array.isArray(saved.parties) && saved.parties.length > 0) {
+          anatiParties = saved.parties.map(p => ({
+            name: p.name || '',
+            cedula: p.cedula || '',
+            role: p.role || 'PROPIETARIO'
+          }));
         }
       } catch {}
     };
@@ -1552,8 +1730,18 @@
         data[k] = $(id) ? $(id).value.trim() : '';
       }
       if (data.scale === 'auto') data.scale = null;
+      const cleanParties = anatiParties
+        .map(p => ({ name: (p.name || '').trim(), cedula: (p.cedula || '').trim(), role: p.role || 'PROPIETARIO' }))
+        .filter(p => p.name || p.cedula);
+      data.parties = cleanParties;
+      // Compatibilidad hacia atrás
+      const props = cleanParties.filter(p => p.role === 'PROPIETARIO' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+      const buyers = cleanParties.filter(p => p.role === 'ADQUIRIENTE' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+      data.propietario = props.map(p => p.name).filter(Boolean).join(', ');
+      data.cedPropietario = props.map(p => p.cedula).filter(Boolean).join(', ');
+      data.favorDe = buyers.map(p => p.name).filter(Boolean).join(', ');
+      data.cedFavorDe = buyers.map(p => p.cedula).filter(Boolean).join(', ');
       try {
-        // Persistir datos recurrentes del profesional y ubicación
         localStorage.setItem(ANATI_STORAGE_KEY, JSON.stringify({
           provincia: data.provincia,
           distrito: data.distrito,
@@ -1565,23 +1753,27 @@
           profLicencia: data.profLicencia,
           hojaIgn: data.hojaIgn,
           equipo: data.equipo,
-          monumentacion: data.monumentacion
+          monumentacion: data.monumentacion,
+          parties: anatiParties
         }));
       } catch {}
       return data;
     };
 
     loadSavedAnatiProfile();
+    renderAnatiPartiesList();
 
-    // Sub-pestañas dentro del modal DXF/PDF
+    // Sub-pestañas dentro del modal DXF/PDF (Pie de Plano | Colindantes y Calles | Capas y Papel)
     $('dxfModalTabs').addEventListener('click', (e) => {
       const btn = e.target.closest('.seg-btn');
       if (!btn) return;
       $('dxfModalTabs').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const isAnatiTab = btn.dataset.dxfTab === 'anati';
-      $('dxfTabAnati').classList.toggle('hidden', !isAnatiTab);
-      $('dxfTabLayers').classList.toggle('hidden', isAnatiTab);
+      const tab = btn.dataset.dxfTab;
+      $('dxfTabAnati').classList.toggle('hidden', tab !== 'anati');
+      $('dxfTabBoundaries').classList.toggle('hidden', tab !== 'boundaries');
+      $('dxfTabLayers').classList.toggle('hidden', tab !== 'layers');
+      if (tab === 'boundaries') renderAnatiBoundariesList();
     });
 
     $('btnOpenDxf').addEventListener('click', () => {
@@ -1593,6 +1785,8 @@
       const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
       const lotNote = (state.lotDivision && state.lotDivision.ok) ? ` + ${state.lotDivision.lots.length} lotes` : '';
       $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${DXF.formatAnatiArea(metrics.areaM2)}${lotNote}`;
+      renderAnatiPartiesList();
+      renderAnatiBoundariesList();
 
       // Auto-actualizar código de Hoja IGN según la ubicación real del polígono actual
       if (global.TopoIGN && state.crsMode === 'utm' && global.TopoGeodesy) {

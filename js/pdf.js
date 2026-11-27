@@ -300,13 +300,32 @@
     const formatArea = global.TopoDXF.formatAnatiArea;
     const a = opts.anati || {};
 
-    // Bounding Box
+    // Bounding Box (incluye servidumbres viales / colindantes para no recortarlos)
     let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
     for (const p of points) {
       if (p.e < minE) minE = p.e;
       if (p.e > maxE) maxE = p.e;
       if (p.n < minN) minN = p.n;
       if (p.n > maxN) maxN = p.n;
+    }
+    const boundaries = state.boundaries || opts.boundaries || {};
+    const orientSign = global.TopoDXF.getPolygonOrientationSign
+      ? global.TopoDXF.getPolygonOrientationSign(points)
+      : 1;
+    for (const leg of (metrics.legs || [])) {
+      const bKey = `${leg.fromId}->${leg.toId}`;
+      const bnd = boundaries[bKey];
+      if (!bnd || bnd.type === 'none') continue;
+      const out = global.TopoDXF.getOutwardNormal(leg, orientSign);
+      const padM = bnd.type === 'road' ? (Math.max(4, Number(bnd.servWidth) || 15) + 4) : 12;
+      for (const ep of [leg.from, leg.to]) {
+        const oe = ep.e + out.nx * padM;
+        const on = ep.n + out.ny * padM;
+        if (oe < minE) minE = oe;
+        if (oe > maxE) maxE = oe;
+        if (on < minN) minN = on;
+        if (on > maxN) maxN = on;
+      }
     }
     const spanE = Math.max(maxE - minE, 10);
     const spanN = Math.max(maxN - minN, 10);
@@ -344,31 +363,48 @@
     cv.setStroke(0.08, 0.1, 0.14, 0.45);
     cv.rect(10, 10, 600, 450, 'S');
 
-    // 2. DIVISIONES PRINCIPALES
+    // 2. DIVISIONES PRINCIPALES (SELLO / REVISION = EXACTO 10 cm x 10 cm: x=360..460, y=10..110)
     cv.setStroke(0.1, 0.12, 0.16, 0.35);
     cv.line(10, 110, 610, 110);
-    cv.line(370, 10, 370, 110);
+    cv.line(360, 10, 360, 110);
     cv.line(460, 10, 460, 460);
 
-    // 3. FRANJA INFERIOR IZQUIERDA (APROBACIÓN ANATI + FIRMA PROPIETARIO)
+    // 3. FRANJA INFERIOR IZQUIERDA (APROBACIÓN ANATI + FIRMAS PROPIETARIOS / ADQUIRIENTES)
     cv.setStroke(0.55, 0.6, 0.68, 0.2, [2, 1.5]);
-    cv.rect(18, 18, 232, 74, 'S');
-    cv.text('ESPACIO RESERVADO PARA APROBACION ANATI', 134, 98, 2.8, { font: 'F2', align: 'center', color: [0.25, 0.3, 0.38] });
+    cv.rect(16, 16, 188, 78, 'S');
+    cv.text('ESPACIO RESERVADO PARA APROBACION ANATI', 110, 99, 2.5, { font: 'F2', align: 'center', color: [0.25, 0.3, 0.38] });
 
-    // Firma propietario
+    // Firmas de 1 o más Propietarios / Adquirientes (x=208..356, y=12..106)
+    const parties = global.TopoDXF.normalizeAnatiParties ? global.TopoDXF.normalizeAnatiParties(a) : [];
+    const sigList = parties.length > 0
+      ? parties
+      : [{ name: 'PROPIETARIO / ADQUIRIENTE', cedula: '', role: 'PROPIETARIO' }];
+    const sigCols = sigList.length <= 2 ? 1 : 2;
+    const sigRows = Math.ceil(sigList.length / sigCols);
+    const sAreaX0 = 208, sAreaW = 148, sAreaY0 = 12, sAreaH = 92;
+    const sCellW = sAreaW / sigCols;
+    const sCellH = sAreaH / sigRows;
+    const sFont = sigList.length <= 2 ? 2.2 : (sigList.length <= 4 ? 1.85 : 1.6);
+
     cv.setStroke(0.1, 0.12, 0.16, 0.3);
-    cv.line(268, 42, 360, 42);
-    const propFirma = (a.favorDe || a.propietario || 'PROPIETARIO / ADQUIRIENTE').toUpperCase();
-    const cedFirma = a.cedFavorDe || a.cedPropietario || '';
-    cv.text(propFirma, 314, 36, 2.5, { font: 'F2', align: 'center' });
-    if (cedFirma) cv.text(`CED. ${cedFirma}`, 314, 31, 2.3, { font: 'F1', align: 'center' });
-    cv.text('PROPIETARIO / ADQUIRIENTE', 314, 25.5, 2.2, { font: 'F1', align: 'center', color: [0.3, 0.35, 0.42] });
+    sigList.forEach((p, idx) => {
+      const col = idx % sigCols;
+      const row = Math.floor(idx / sigCols);
+      const cx = sAreaX0 + (col + 0.5) * sCellW;
+      const yTop = sAreaY0 + sAreaH - row * sCellH;
+      const lineY = yTop - sCellH * 0.44;
+      const halfLine = Math.min(44, sCellW * 0.42);
+      cv.line(cx - halfLine, lineY, cx + halfLine, lineY);
+      const step = sFont * 1.65;
+      cv.text((p.name || '---').toUpperCase(), cx, lineY - step, sFont, { font: 'F2', align: 'center' });
+      cv.text(p.cedula ? `CED. ${p.cedula.toUpperCase()}` : 'CED. ____________', cx, lineY - step * 2, sFont * 0.92, { font: 'F1', align: 'center' });
+      cv.text(p.role.toUpperCase(), cx, lineY - step * 3, sFont * 0.88, { font: 'F2', align: 'center', color: [0.22, 0.28, 0.38] });
+    });
 
-    // Sello / Revisión
-    cv.text('SELLO / REVISION', 415, 98, 2.4, { font: 'F2', align: 'center', color: [0.25, 0.3, 0.38] });
+    // Sello / Revisión (EXACTO 10 cm x 10 cm: x=360..460, y=10..110)
+    cv.text('SELLO / REVISION', 410, 99, 2.4, { font: 'F2', align: 'center', color: [0.25, 0.3, 0.38] });
 
     // 4. PIE DE PLANO / CAJETÍN OFICIAL ANATI (x=460..610, y=10..110)
-    // Sombreado sutil en cabecera y franja de área
     cv.setFill(0.94, 0.96, 0.98);
     cv.rect(460, 94.5, 150, 15.5, 'f');
     cv.setFill(0.92, 0.97, 0.95);
@@ -388,27 +424,37 @@
     cv.text(`Distrito: ${(a.distrito || 'DAVID').toUpperCase()}`, 540, 100.5, 2.4, { font: 'F2' });
     cv.text(`Lugar: ${(a.lugar || 'DAVID').toUpperCase()}`, 540, 96.6, 2.4, { font: 'F1' });
 
-    // 4b. Descripción del globo de terreno
+    // 4b. Descripción del globo + Propietarios y Adquirientes (1 o más)
     const tipoPlano = (a.tipoPlano || 'LEVANTAMIENTO TOPOGRAFICO').toUpperCase();
     const folioStr = a.folioReal ? ` DEL FOLIO REAL ${a.folioReal}` : '';
     const codUbStr = a.codUbicacion ? `, COD. DE UBICACION ${a.codUbicacion}` : '';
-    let dy = 89.5;
-    for (const ln of wrapLines(`${tipoPlano}${folioStr}${codUbStr}`, 44).slice(0, 3)) {
-      cv.text(ln, 535, dy, 2.6, { font: 'F2', align: 'center' });
-      dy -= 4.2;
+    let dy = 90.0;
+    const ownersList = parties.filter(p => p.role === 'PROPIETARIO' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+    const buyersList = parties.filter(p => p.role === 'ADQUIRIENTE' || p.role === 'PROPIETARIO Y ADQUIRIENTE');
+    const denseParties = (ownersList.length + buyersList.length) > 3;
+    const pFont = denseParties ? 1.85 : 2.15;
+    const pStep = denseParties ? 3.0 : 3.5;
+
+    for (const ln of wrapLines(`${tipoPlano}${folioStr}${codUbStr}`, 44).slice(0, 2)) {
+      cv.text(ln, 535, dy, 2.45, { font: 'F2', align: 'center' });
+      dy -= 3.8;
     }
-    if (a.propietario) {
-      const pLine = `PROPIEDAD DE: ${a.propietario.toUpperCase()}${a.cedPropietario ? `, CED. ${a.cedPropietario}` : ''}`;
-      for (const ln of wrapLines(pLine, 46).slice(0, 2)) {
-        cv.text(ln, 535, dy, 2.3, { font: 'F1', align: 'center' });
-        dy -= 3.8;
+    if (ownersList.length > 0) {
+      const pTxt = 'PROPIEDAD DE: ' + ownersList.map(p => `${p.name.toUpperCase()}${p.cedula ? ` (CED. ${p.cedula.toUpperCase()})` : ''}`).join('; ');
+      for (const ln of wrapLines(pTxt, denseParties ? 56 : 48).slice(0, 3)) {
+        if (dy < 57.5) break;
+        cv.text(ln, 535, dy, pFont, { font: 'F1', align: 'center' });
+        dy -= pStep;
       }
     }
-    if (a.favorDe) {
-      cv.text('A FAVOR DE:', 535, Math.min(dy - 1, 66.5), 2.4, { font: 'F2', align: 'center' });
-      cv.text(a.favorDe.toUpperCase(), 535, Math.min(dy - 5, 62.5), 2.7, { font: 'F2', align: 'center' });
-      if (a.cedFavorDe) {
-        cv.text(`CED. ${a.cedFavorDe}`, 535, Math.min(dy - 9, 58.2), 2.3, { font: 'F1', align: 'center' });
+    if (buyersList.length > 0 && dy >= 60) {
+      cv.text('A FAVOR DE:', 535, dy - 0.5, pFont, { font: 'F2', align: 'center' });
+      dy -= pStep;
+      const bTxt = buyersList.map(p => `${p.name.toUpperCase()}${p.cedula ? ` (CED. ${p.cedula.toUpperCase()})` : ''}`).join('; ');
+      for (const ln of wrapLines(bTxt, denseParties ? 56 : 48).slice(0, 3)) {
+        if (dy < 57.0) break;
+        cv.text(ln, 535, dy, pFont, { font: 'F2', align: 'center' });
+        dy -= pStep;
       }
     }
 
@@ -489,17 +535,18 @@
       '- LAS DISTANCIAS ESTAN DADAS EN METROS.',
       a.equipo ? `- EQUIPO UTILIZADO: ${a.equipo.toUpperCase()}.` : '- LEVANTAMIENTO REALIZADO CON EQUIPO TOPOGRAFICO DE PRECISION.',
       a.monumentacion ? `- MONUMENTACION: ${a.monumentacion.toUpperCase()}.` : '- TODOS LOS VERTICES DEBIDAMENTE MONUMENTADOS.',
-      a.planoRef ? `- PLANO DE REFERENCIA: ${a.planoRef.toUpperCase()}.` : '',
-      a.notaExtra ? `- ${a.notaExtra.toUpperCase()}` : ''
+      a.notaExtra ? `- ${a.notaExtra.toUpperCase()}` : '',
+      `- PLANO DE REFERENCIA N\u00b0: ${a.planoRef ? a.planoRef.toUpperCase() : '____________________'}`,
+      `- FECHA DE APROBACION: ${a.fechaAprobacion ? a.fechaAprobacion.toUpperCase() : '____________________'}`
     ].filter(Boolean);
 
     for (const item of noteItems) {
-      for (const ln of wrapLines(item, 58)) {
-        if (ny < 114) break;
-        cv.text(ln, 466, ny, 2.1, { font: 'F1' });
-        ny -= 4.0;
+      for (const ln of wrapLines(item, 60)) {
+        if (ny < 113) break;
+        cv.text(ln, 466, ny, 1.95, { font: 'F1' });
+        ny -= 3.6;
       }
-      ny -= 1.0;
+      ny -= 0.7;
     }
 
     // 6. CUADROS LATERALES IZQUIERDOS: LOCALIZACION REGIONAL + NORTE + DETALLE DE AMARRE
@@ -610,8 +657,16 @@
       }
     }
 
-    // Polígono escalado
+    // Polígono escalado + Calles / Servidumbres y Colindantes (dibujados hacia el exterior del lote)
     const paperPts = points.map(p => ({ ...p, ...toPaper(p.e, p.n) }));
+    drawAnatiBoundariesPdf(cv, {
+      metrics,
+      boundaries,
+      orientSign,
+      toPaper,
+      mmPerMeter
+    });
+
     if (paperPts.length >= 2) {
       if (closed) {
         cv.setFill(0.91, 0.98, 0.95);
@@ -683,6 +738,132 @@
 
     const stream = cv.buildStream();
     return buildPdfDocument(pageWmm * MM2PT, pageHmm * MM2PT, stream, pdfImages);
+  }
+
+  /** Dibuja Calles/Servidumbres (con ancho de servidumbre, rodadura y material) y Colindantes Fincas en el PDF */
+  function drawAnatiBoundariesPdf(cv, { metrics, boundaries, orientSign, toPaper, mmPerMeter }) {
+    if (!boundaries || !metrics || !metrics.legs || !global.TopoDXF.getOutwardNormal) return;
+
+    const matColors = {
+      ASFALTO: [0.80, 0.82, 0.85],
+      CONCRETO: [0.88, 0.88, 0.86],
+      TIERRA: [0.91, 0.85, 0.75],
+      TOSCA: [0.89, 0.84, 0.76],
+      ADOQUIN: [0.86, 0.82, 0.80]
+    };
+
+    for (const leg of metrics.legs) {
+      if (leg.dist < 1e-4) continue;
+      const bnd = boundaries[`${leg.fromId}->${leg.toId}`];
+      if (!bnd || !bnd.type || bnd.type === 'none') continue;
+
+      const out = global.TopoDXF.getOutwardNormal(leg, orientSign);
+      const tx = leg.dE / leg.dist;
+      const ty = leg.dN / leg.dist;
+      let ang = Math.atan2(leg.dN, leg.dE) * (180 / Math.PI);
+      if (ang > 90) ang -= 180;
+      if (ang < -90) ang += 180;
+
+      if (bnd.type === 'road') {
+        const servW = Math.max(2, Number(bnd.servWidth) || 15);
+        const roadW = Math.min(servW - 0.3, Math.max(1, Number(bnd.roadWidth) || 6));
+        const mat = String(bnd.material || 'ASFALTO').toUpperCase();
+        const roadName = String(bnd.roadName || 'CALLE PUBLICA').toUpperCase();
+
+        const extM = Math.min(leg.dist * 0.14, 14);
+        const eA = leg.from.e - tx * extM, nA = leg.from.n - ty * extM;
+        const eB = leg.to.e + tx * extM, nB = leg.to.n + ty * extM;
+
+        const ptAt = (e, n, offM) => toPaper(e + out.nx * offM, n + out.ny * offM);
+
+        // 1) Banda de Servidumbre completa
+        const s0 = ptAt(eA, nA, 0), s1 = ptAt(eB, nB, 0);
+        const s2 = ptAt(eB, nB, servW), s3 = ptAt(eA, nA, servW);
+        cv.setFill(0.95, 0.96, 0.97);
+        cv.polyline([s0, s1, s2, s3], true, 'f');
+        cv.setStroke(0.32, 0.36, 0.42, 0.3, [2.5, 1.5]);
+        cv.line(s3.x, s3.y, s2.x, s2.y);
+
+        // 2) Banda de Rodadura centrada dentro de la servidumbre
+        const rStart = (servW - roadW) / 2;
+        const rEnd = (servW + roadW) / 2;
+        const r0 = ptAt(eA, nA, rStart), r1 = ptAt(eB, nB, rStart);
+        const r2 = ptAt(eB, nB, rEnd), r3 = ptAt(eA, nA, rEnd);
+        const mc = matColors[mat] || matColors.ASFALTO;
+        cv.setFill(mc[0], mc[1], mc[2]);
+        cv.polyline([r0, r1, r2, r3], true, 'f');
+        cv.setStroke(0.18, 0.22, 0.28, 0.32);
+        cv.line(r0.x, r0.y, r1.x, r1.y);
+        cv.line(r3.x, r3.y, r2.x, r2.y);
+
+        // 3) Eje central de calle (línea discontinua)
+        const c0 = ptAt(eA, nA, servW / 2), c1 = ptAt(eB, nB, servW / 2);
+        cv.setStroke(0.28, 0.32, 0.38, 0.2, [3.2, 1.4, 0.6, 1.4]);
+        cv.line(c0.x, c0.y, c1.x, c1.y);
+
+        // 4) Cotas transversales de Servidumbre y Rodadura cerca del 18% del tramo
+        const dimE = leg.from.e + tx * (leg.dist * 0.16);
+        const dimN = leg.from.n + ty * (leg.dist * 0.16);
+        const dA = ptAt(dimE, dimN, 0), dB = ptAt(dimE, dimN, servW);
+        cv.setStroke(0.1, 0.15, 0.22, 0.22);
+        cv.line(dA.x, dA.y, dB.x, dB.y);
+        // Pequeñas marcas en extremos de cota
+        const tickMm = 1.2;
+        cv.line(dA.x - tx * tickMm, dA.y - ty * tickMm, dA.x + tx * tickMm, dA.y + ty * tickMm);
+        cv.line(dB.x - tx * tickMm, dB.y - ty * tickMm, dB.x + tx * tickMm, dB.y + ty * tickMm);
+
+        // 5) Rótulos de la calle, servidumbre, rodadura y material (ordenados de arriba hacia abajo)
+        const midE = (leg.from.e + leg.to.e) / 2;
+        const midN = (leg.from.n + leg.to.n) / 2;
+        const servMm = servW * mmPerMeter;
+        const stepM = Math.max(3.1 / mmPerMeter, 1.8);
+        const centerOffM = servMm >= 11 ? (servW / 2) : (servW + Math.max(4.0 / mmPerMeter, 2.5));
+        const off1 = out.ny >= 0 ? (centerOffM + stepM * 0.55) : (centerOffM - stepM * 0.55);
+        const off2 = out.ny >= 0 ? (centerOffM - stepM * 0.55) : (centerOffM + stepM * 0.55);
+        const pLbl1 = ptAt(midE, midN, off1);
+        const pLbl2 = ptAt(midE, midN, off2);
+        cv.text(`${roadName}`, pLbl1.x, pLbl1.y, 2.25, { font: 'F2', align: 'center', rotDeg: ang, color: [0.06, 0.1, 0.18] });
+        cv.text(
+          `SERV. ${servW.toFixed(2)}m - RODADURA DE ${mat} ${roadW.toFixed(2)}m`,
+          pLbl2.x, pLbl2.y, 1.75, { font: 'F1', align: 'center', rotDeg: ang, color: [0.16, 0.22, 0.32] }
+        );
+      } else if (bnd.type === 'parcel' || bnd.type === 'custom') {
+        // Cortas líneas de prolongación en los 2 vértices del lindero (estilo catastral ANATI)
+        const tickM = Math.max(5 / mmPerMeter, 3);
+        const f0 = toPaper(leg.from.e, leg.from.n);
+        const f1 = toPaper(leg.from.e + out.nx * tickM, leg.from.n + out.ny * tickM);
+        const t0 = toPaper(leg.to.e, leg.to.n);
+        const t1 = toPaper(leg.to.e + out.nx * tickM, leg.to.n + out.ny * tickM);
+        cv.setStroke(0.35, 0.4, 0.48, 0.2, [1.8, 1.2]);
+        cv.line(f0.x, f0.y, f1.x, f1.y);
+        cv.line(t0.x, t0.y, t1.x, t1.y);
+
+        const lines = [];
+        if (bnd.type === 'parcel') {
+          if (bnd.folioReal) lines.push(`FOLIO REAL: ${String(bnd.folioReal).toUpperCase()}`);
+          if (bnd.codUbicacion) lines.push(`COD. DE UBICACION: ${String(bnd.codUbicacion).toUpperCase()}`);
+          if (bnd.owner) lines.push(`PROPIEDAD DE: ${String(bnd.owner).toUpperCase()}`);
+          if (lines.length === 0) lines.push('FINCA COLINDANTE');
+        } else if (bnd.customText) {
+          lines.push(String(bnd.customText).toUpperCase());
+        }
+
+        const midE = (leg.from.e + leg.to.e) / 2;
+        const midN = (leg.from.n + leg.to.n) / 2;
+        const pMid = toPaper(midE, midN);
+        const baseOffMm = 8.0; // Libre del rumbo y distancia
+        const lineStepMm = 3.0;
+        // Ordenar líneas para que siempre se lean de arriba hacia abajo según la orientación
+        const outUp = out.ny >= 0;
+        const ordered = outUp ? [...lines].reverse() : lines;
+        ordered.forEach((ln, idx) => {
+          const distMm = baseOffMm + idx * lineStepMm;
+          const lx = pMid.x + out.nx * distMm;
+          const ly = pMid.y + out.ny * distMm;
+          cv.text(ln, lx, ly, 1.9, { font: idx === (outUp ? 0 : lines.length - 1) ? 'F2' : 'F1', align: 'center', rotDeg: ang, color: [0.1, 0.16, 0.26] });
+        });
+      }
+    }
   }
 
   function drawAnatiTablePdf(cv, cfg) {
