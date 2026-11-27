@@ -1712,29 +1712,52 @@
       }
     });
 
+    let lastPdfBlobUrl = null;
+    const setDxfExportStatus = (html, isError = false) => {
+      const box = $('dxfExportStatus');
+      if (!box) return;
+      if (!html) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+      }
+      box.style.background = isError ? 'rgba(239, 68, 68, 0.14)' : 'rgba(0, 229, 160, 0.10)';
+      box.style.color = isError ? '#fca5a5' : 'var(--text-main)';
+      box.innerHTML = html;
+      box.classList.remove('hidden');
+    };
+
     $('btnDownloadPdf').addEventListener('click', async () => {
       const btn = $('btnDownloadPdf');
       const prevTxt = btn.textContent;
       try {
-        if (!global.TopoPDF) throw new Error('Módulo PDF no disponible.');
+        if (!global.TopoPDF) throw new Error('Módulo PDF no disponible. Recarga la página con Ctrl+F5.');
         btn.disabled = true;
         btn.textContent = 'Generando mapas IGN...';
+        setDxfExportStatus('<span>⏳ Generando Localización Regional y Detalle de Amarre desde el mosaico IGN...</span>');
         const opts = getExportOpts();
 
         // Generar Localización Regional (1:25k / 1:40k) + Detalle de Amarre (1:10k / 1:15k) con Hojas IGN Tommy Guardia
         if (global.TopoIGN && state.crsMode === 'utm') {
-          const maps = await global.TopoIGN.generateAnatiMapsForPdf(state.points, {
-            utmZone: state.utmZone,
-            utmHemi: state.utmHemi,
-            regionalScale: $('anatiRegScale')?.value || 'auto',
-            amarreScale: $('anatiAmarreScale')?.value || 'auto',
-            tiePoints: readAnatiTiePoints(),
-            autoDetectTies: true,
-            regionalBoxWmm: 110,
-            regionalBoxHmm: 100,
-            amarreBoxWmm: 160,
-            amarreBoxHmm: 148
-          });
+          let maps = null;
+          if (typeof global.TopoIGN.generateAnatiMapsForPdf === 'function') {
+            maps = await global.TopoIGN.generateAnatiMapsForPdf(state.points, {
+              utmZone: state.utmZone,
+              utmHemi: state.utmHemi,
+              regionalScale: $('anatiRegScale')?.value || 'auto',
+              amarreScale: $('anatiAmarreScale')?.value || 'auto',
+              tiePoints: readAnatiTiePoints(),
+              autoDetectTies: true,
+              tieTimeoutMs: 2500,
+              regionalBoxWmm: 110,
+              regionalBoxHmm: 100,
+              amarreBoxWmm: 160,
+              amarreBoxHmm: 148
+            });
+          } else if (typeof global.TopoIGN.generateRegionalCropForPdf === 'function') {
+            const reg = await global.TopoIGN.generateRegionalCropForPdf(state.points, state.utmZone, state.utmHemi);
+            if (reg) maps = { regional: reg, amarre: null, sheetCode: reg.sheetCode, tiePoints: [] };
+          }
           if (maps) {
             if (maps.regional) opts.regionalCrop = maps.regional;
             if (maps.amarre) opts.amarreCrop = maps.amarre;
@@ -1757,13 +1780,37 @@
         const pdfBytes = global.TopoPDF.generateAnatiPDF(state, opts);
         let base = ($('dxfFilename').value.trim() || 'Plano_ANATI').replace(/\.(dxf|pdf)$/i, '');
         const filename = `${base}_ANATI.pdf`;
-        IO.downloadFile(filename, pdfBytes, 'application/pdf');
-        dxfDialog.close();
+
+        // Crear Blob URL persistente para descarga directa + botón de Vista Previa / Guardar
+        if (lastPdfBlobUrl) URL.revokeObjectURL(lastPdfBlobUrl);
+        const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+        lastPdfBlobUrl = URL.createObjectURL(pdfBlob);
+
+        // Disparar descarga automática
+        const a = document.createElement('a');
+        a.href = lastPdfBlobUrl;
+        a.download = filename;
+        a.style.display = 'none';
+        dxfDialog.appendChild(a);
+        a.click();
+        dxfDialog.removeChild(a);
+
+        const kb = Math.round(pdfBytes.length / 1024);
         const extra = opts.regionalCrop
-          ? ` (Hoja ${opts.regionalCrop.sheetCode} · Reg 1:${opts.regionalCrop.scale.toLocaleString('en-US')}${opts.amarreCrop ? ` · Amarre 1:${opts.amarreCrop.scale.toLocaleString('en-US')}` : ''})`
-          : '';
-        showToast(`PDF ANATI "${filename}" descargado${extra}`);
+          ? `Hoja ${opts.regionalCrop.sheetCode} · Reg 1:${opts.regionalCrop.scale.toLocaleString('en-US')}${opts.amarreCrop ? ` · Amarre 1:${opts.amarreCrop.scale.toLocaleString('en-US')}` : ''}`
+          : 'Vectorial';
+
+        setDxfExportStatus(`
+          <span><strong>✓ PDF listo (${kb} KB)</strong> · ${extra}</span>
+          <span class="row-actions" style="gap:6px;">
+            <a href="${lastPdfBlobUrl}" target="_blank" rel="noopener" class="chip-btn" style="text-decoration:none;background:#0ea5e9;color:#082f49;border-color:#0ea5e9;font-weight:700;">👁️ Ver / Imprimir PDF</a>
+            <a href="${lastPdfBlobUrl}" download="${filename}" class="chip-btn" style="text-decoration:none;background:#059669;color:#fff;border-color:#059669;font-weight:700;">⬇ Guardar PDF</a>
+          </span>
+        `);
+        showToast(`PDF ANATI "${filename}" generado (${kb} KB)`);
       } catch (err) {
+        console.error('Error al generar PDF ANATI:', err);
+        setDxfExportStatus(`<span><strong>⚠ Error al generar PDF:</strong> ${err.message}</span>`, true);
         showToast(`Error al generar PDF: ${err.message}`);
       } finally {
         btn.disabled = false;

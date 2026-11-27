@@ -191,17 +191,19 @@
     return lines.join('\r\n');
   }
 
-  /** Descarga un texto como archivo en el navegador */
+  /** Descarga un texto o binario (PDF/DXF/CSV) como archivo en el navegador y devuelve la Blob URL */
   function downloadFile(filename, content, mimeType = 'text/plain;charset=utf-8') {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    return url;
   }
 
   global.TopoIO = {

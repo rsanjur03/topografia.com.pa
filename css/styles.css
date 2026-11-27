@@ -967,6 +967,17 @@ dialog.modal::backdrop {
 .modal-head { border-bottom: 1px solid var(--border); }
 .modal-head h2 { margin: 0; font-size: 15.5px; }
 .modal-foot { border-top: 1px solid var(--border); }
+.dxf-export-status {
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dxf-export-status.hidden { display: none; }
 
 .modal-body {
   padding: 15px 16px;
