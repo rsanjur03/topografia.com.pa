@@ -283,18 +283,18 @@
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      const isCrossOrigin = /^https?:\/\//i.test(src) && global.location && !src.startsWith(global.location.origin);
+      if (isCrossOrigin) img.crossOrigin = 'anonymous';
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('No se pudo cargar la imagen de la hoja IGN.'));
+      img.onerror = () => reject(new Error('No se pudo cargar la imagen de la hoja IGN: ' + src));
       img.src = src;
     });
   }
 
-  // ==================== RECORTE AUTOMÁTICO PARA EL PDF ANATI ====================
+  // ==================== BÚSQUEDA DE HOJAS E INTERSECCIONES VIALES (OSM) ====================
   /** Busca qué hoja IGN (activada o precargada) contiene el centroide (lat, lon) del polígono */
   function findCoveringSheet(lat, lon) {
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-    // Priorizar hojas activas; si ninguna activa lo cubre, revisar todas las disponibles
     const ordered = [...sheets.filter(s => s.enabled), ...sheets.filter(s => !s.enabled)];
     for (const s of ordered) {
       const b = s.bounds;
@@ -305,127 +305,693 @@
     return null;
   }
 
+  /** Devuelve todas las hojas IGN que intersectan una ventana geográfica {south, north, west, east} */
+  function findCoveringSheetsInBounds(winGeo) {
+    if (!winGeo) return [];
+    const seenCodes = new Set();
+    const out = [];
+    // Priorizar hojas de usuario activas, luego precargadas
+    const ordered = [...sheets.filter(s => !s.builtin && s.enabled), ...sheets.filter(s => s.builtin), ...sheets.filter(s => !s.builtin && !s.enabled)];
+    for (const s of ordered) {
+      const b = s.bounds;
+      const overlaps = !(b.east < winGeo.west || b.west > winGeo.east || b.north < winGeo.south || b.south > winGeo.north);
+      if (overlaps && !seenCodes.has(s.code)) {
+        seenCodes.add(s.code);
+        out.push(s);
+      }
+    }
+    return out;
+  }
+
   /**
-   * Genera un recorte JPEG limpio de la Hoja IGN centrado en el polígono,
-   * dibujando el polígono en rojo/verde como GLOBO MEDIDO, listo para incrustar
-   * en el cuadro LOCALIZACION REGIONAL del PDF Vectorial ANATI.
-   * @returns {Promise<{ jpegBytes: Uint8Array, width: number, height: number, sheetCode: string, sheetName: string } | null>}
+   * Busca automáticamente 2 intersecciones de calles/caminos cercanas usando OpenStreetMap (Overpass API)
+   * y devuelve sus coordenadas UTM exactas para el cuadro DETALLE DE AMARRE ANATI.
    */
-  async function generateRegionalCropForPdf(points, utmZone = 17, utmHemi = 'N') {
+  async function findNearbyRoadIntersections(lat, lon, utmZone = 17, utmHemi = 'N', maxRadiusM = 1200) {
     const Geo = global.TopoGeodesy;
-    if (!points || points.length === 0 || !Geo) return null;
+    if (!Geo || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
 
-    const geoPts = points
-      .filter(p => Geo.isPlausibleUtm(p.e, p.n))
-      .map(p => Geo.utmToLatLon(p.e, p.n, utmZone, utmHemi, 'WGS84'));
-    if (geoPts.length === 0) return null;
+    const centerUtm = Geo.latLonToUtm(lat, lon, utmZone, 'WGS84');
+    const cUtmE = centerUtm.easting;
+    const cUtmN = centerUtm.northing;
+    const endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
 
-    const avgLat = geoPts.reduce((s, p) => s + p.lat, 0) / geoPts.length;
-    const avgLon = geoPts.reduce((s, p) => s + p.lon, 0) / geoPts.length;
+    const queryOverpass = async (radius) => {
+      const q = `[out:json][timeout:7];way(around:${radius},${lat.toFixed(6)},${lon.toFixed(6)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)$"];(._;>;);out body;`;
+      for (const ep of endpoints) {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 7500);
+        try {
+          const resp = await fetch(ep, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body: 'data=' + encodeURIComponent(q),
+            signal: ctrl.signal
+          });
+          clearTimeout(tid);
+          if (!resp.ok) continue;
+          return await resp.json();
+        } catch {
+          clearTimeout(tid);
+        }
+      }
+      return null;
+    };
 
-    const sheet = findCoveringSheet(avgLat, avgLon);
-    if (!sheet) return null;
+    const radii = [Math.min(850, maxRadiusM), Math.max(1600, maxRadiusM)];
+    for (const radius of radii) {
+      const data = await queryOverpass(radius);
+      if (!data || !Array.isArray(data.elements)) continue;
 
-    try {
-      const img = await loadImage(sheet.url);
-      const b = sheet.bounds;
-      const latSpan = b.north - b.south;
-      const lonSpan = b.east - b.west;
-
-      // Ventana regional proporcional a 115 x 104 mm (~4.2 km x 3.8 km en terreno ≈ escala 1:36,000 - 1:40,000)
-      const winLonDeg = 0.038;
-      const winLatDeg = winLonDeg * (104 / 115);
-
-      let cropW = (winLonDeg / lonSpan) * img.naturalWidth;
-      let cropH = (winLatDeg / latSpan) * img.naturalHeight;
-      cropW = Math.min(img.naturalWidth, Math.max(220, cropW));
-      cropH = Math.min(img.naturalHeight, Math.max(200, cropH));
-
-      const cxPx = ((avgLon - b.west) / lonSpan) * img.naturalWidth;
-      const cyPx = ((b.north - avgLat) / latSpan) * img.naturalHeight;
-
-      let sx = cxPx - cropW / 2;
-      let sy = cyPx - cropH / 2;
-      sx = Math.max(0, Math.min(img.naturalWidth - cropW, sx));
-      sy = Math.max(0, Math.min(img.naturalHeight - cropH, sy));
-
-      const outW = 920;
-      const outH = Math.round(outW * (104 / 115)); // 832 px exacto para la caja 115x104 mm
-      const canvas = document.createElement('canvas');
-      canvas.width = outW;
-      canvas.height = outH;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, outW, outH);
-      ctx.drawImage(img, sx, sy, cropW, cropH, 0, 0, outW, outH);
-
-      // Dibujar el polígono medido exactamente sobre el recorte de la hoja IGN
-      const mapGeoToOut = (lat, lon) => ({
-        x: (((lon - b.west) / lonSpan) * img.naturalWidth - sx) * (outW / cropW),
-        y: (((b.north - lat) / latSpan) * img.naturalHeight - sy) * (outH / cropH)
-      });
-
-      const polyPx = geoPts.map(g => mapGeoToOut(g.lat, g.lon));
-      if (polyPx.length >= 3) {
-        ctx.save();
-        ctx.beginPath();
-        polyPx.forEach((pt, idx) => (idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
-        ctx.closePath();
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.42)';
-        ctx.fill();
-        ctx.strokeStyle = '#dc2626';
-        ctx.lineWidth = 4;
-        ctx.stroke();
-        ctx.restore();
+      const nodes = new Map();
+      const ways = [];
+      for (const el of data.elements) {
+        if (el.type === 'node') nodes.set(el.id, el);
+        else if (el.type === 'way' && Array.isArray(el.nodes) && el.nodes.length >= 2) ways.push(el);
       }
 
-      // Marcador de centroide + flecha "GLOBO MEDIDO"
-      const cOut = mapGeoToOut(avgLat, avgLon);
+      // Contar cuántos caminos distintos (y grado de conexión) confluyen en cada nodo
+      const roadRank = {
+        motorway: 5, trunk: 5, primary: 5, secondary: 4, tertiary: 4,
+        unclassified: 3, residential: 3, living_street: 2, service: 1, track: 1
+      };
+      const nodeWays = new Map();
+      const nodeDegree = new Map();
+      for (const w of ways) {
+        const hw = (w.tags && w.tags.highway) || 'unclassified';
+        const rank = roadRank[hw] || 2;
+        const name = (w.tags && (w.tags.name || w.tags.ref)) || hw;
+        const nList = w.nodes;
+        for (let i = 0; i < nList.length; i++) {
+          const nid = nList[i];
+          const degAdd = (i === 0 || i === nList.length - 1) ? 1 : 2;
+          nodeDegree.set(nid, (nodeDegree.get(nid) || 0) + degAdd);
+          if (!nodeWays.has(nid)) nodeWays.set(nid, []);
+          nodeWays.get(nid).push({ id: w.id, name, hw, rank });
+        }
+      }
+
+      const candidates = [];
+      for (const [nid, wList] of nodeWays.entries()) {
+        const deg = nodeDegree.get(nid) || 0;
+        if (wList.length < 2 || deg < 3) continue; // Intersección real (>= 3 brazos / >= 2 vías)
+        const nd = nodes.get(nid);
+        if (!nd) continue;
+        const u = Geo.latLonToUtm(nd.lat, nd.lon, utmZone, 'WGS84');
+        const ue = u.easting, un = u.northing;
+        const dist = Math.hypot(ue - cUtmE, un - cUtmN);
+        if (dist < 25 || dist > radius * 0.95) continue;
+        const maxRank = Math.max(...wList.map(x => x.rank));
+        const uniqueNames = [...new Set(wList.map(x => x.name).filter(Boolean))];
+        // Preferir intersecciones cercanas (60..750 m) sobre vías principales
+        const score = (maxRank * 180) - dist + (wList.length >= 3 ? 60 : 0);
+        candidates.push({
+          e: Math.round(ue),
+          n: Math.round(un),
+          lat: nd.lat,
+          lon: nd.lon,
+          dist,
+          angle: Math.atan2(un - cUtmN, ue - cUtmE),
+          label: uniqueNames.slice(0, 2).join(' / ') || 'Intersección vial',
+          score
+        });
+      }
+
+      if (candidates.length === 0) continue;
+      candidates.sort((a, b) => b.score - a.score);
+
+      const picked = [candidates[0]];
+      // Elegir una 2da intersección bien separada (>= 90 m de la 1ra, idealmente en dirección distinta)
+      let bestSecond = null;
+      let bestSecondScore = -Infinity;
+      for (let i = 1; i < candidates.length; i++) {
+        const c = candidates[i];
+        const sep = Math.hypot(c.e - picked[0].e, c.n - picked[0].n);
+        if (sep < 75) continue;
+        const angDiff = Math.abs(Math.atan2(Math.sin(c.angle - picked[0].angle), Math.cos(c.angle - picked[0].angle)));
+        const s2 = c.score + angDiff * 140 + Math.min(sep, 400) * 0.25;
+        if (s2 > bestSecondScore) {
+          bestSecondScore = s2;
+          bestSecond = c;
+        }
+      }
+      if (bestSecond) picked.push(bestSecond);
+      if (picked.length > 0) return picked;
+    }
+    return [];
+  }
+
+  // ==================== HELPERS DE DIBUJO CARTOGRÁFICO ANATI ====================
+  function drawArrowHead(ctx, fromX, fromY, toX, toY, headLen = 18) {
+    const ang = Math.atan2(toY - fromY, toX - fromX);
+    ctx.beginPath();
+    ctx.moveTo(fromX, fromY);
+    ctx.lineTo(toX, toY);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLen * Math.cos(ang - 0.34), toY - headLen * Math.sin(ang - 0.34));
+    ctx.lineTo(toX - headLen * Math.cos(ang + 0.34), toY - headLen * Math.sin(ang + 0.34));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /** Rosa de los vientos clásica ANATI dentro de la esquina superior izquierda de Localización Regional */
+  function drawCompassRose(ctx, cx, cy, r = 56) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.strokeStyle = '#111827';
+    ctx.fillStyle = '#111827';
+    ctx.lineWidth = 2.2;
+
+    // Eje Norte-Sur alargado + Este-Oeste
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.45); ctx.lineTo(0, r * 1.15);
+    ctx.moveTo(-r * 0.95, 0); ctx.lineTo(r * 0.95, 0);
+    ctx.stroke();
+
+    // Estrella de 8 puntas
+    const pts = [
+      [0, -r * 0.72], [r * 0.16, -r * 0.16], [r * 0.72, 0], [r * 0.16, r * 0.16],
+      [0, r * 0.72], [-r * 0.16, r * 0.16], [-r * 0.72, 0], [-r * 0.16, -r * 0.16]
+    ];
+    ctx.beginPath();
+    pts.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1])));
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.fill();
+    ctx.stroke();
+
+    // Triángulos sombreados clásicos
+    ctx.fillStyle = '#111827';
+    for (let k = 0; k < 4; k++) {
       ctx.save();
+      ctx.rotate(k * Math.PI / 2);
       ctx.beginPath();
-      ctx.arc(cOut.x, cOut.y, 10, 0, Math.PI * 2);
-      ctx.strokeStyle = '#dc2626';
-      ctx.lineWidth = 3.5;
-      ctx.stroke();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, -r * 0.72);
+      ctx.lineTo(r * 0.16, -r * 0.16);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
 
-      const lblX = cOut.x > outW * 0.58 ? cOut.x - 210 : cOut.x + 38;
-      const lblY = cOut.y < outH * 0.25 ? cOut.y + 42 : cOut.y - 48;
+    // Anillo central
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.36, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Letras N, S, E, O
+    ctx.font = `bold ${Math.round(r * 0.42)}px Georgia, "Times New Roman", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#111827';
+    ctx.fillText('N', 0, -r * 1.08);
+    ctx.fillText('S', 0, r * 1.32);
+    ctx.fillText('E', r * 1.12, 0);
+    ctx.fillText('O', -r * 1.12, 0);
+    ctx.restore();
+  }
+
+  /** Selecciona los vértices principales de un polígono para etiquetar sin saturación (máx 6 si hay muchos) */
+  function selectPrincipalVertices(points, maxLabels = 6) {
+    if (!points || points.length === 0) return [];
+    const n = points.length;
+    if (n <= maxLabels) {
+      return points.map((p, idx) => ({ pt: p, idx, label: String(p.id || (idx + 1)).replace(/^P/i, '') || String(idx + 1) }));
+    }
+    // Calcular ángulo de giro en cada vértice para priorizar esquinas principales
+    const scored = points.map((p, i) => {
+      const prev = points[(i - 1 + n) % n];
+      const next = points[(i + 1) % n];
+      const v1x = p.e - prev.e, v1y = p.n - prev.n;
+      const v2x = next.e - p.e, v2y = next.n - p.n;
+      const l1 = Math.hypot(v1x, v1y) || 1;
+      const l2 = Math.hypot(v2x, v2y) || 1;
+      const dot = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (l1 * l2)));
+      const turn = Math.acos(dot); // 0 = recto, PI/2 = esquina 90°
+      return { pt: p, idx: i, turn, bonus: i === 0 ? 10 : 0 };
+    });
+    scored.sort((a, b) => (b.turn + b.bonus) - (a.turn + a.bonus));
+    const chosen = scored.slice(0, maxLabels).sort((a, b) => a.idx - b.idx);
+    return chosen.map(c => ({
+      pt: c.pt,
+      idx: c.idx,
+      label: String(c.pt.id || (c.idx + 1)).replace(/^P/i, '') || String(c.idx + 1)
+    }));
+  }
+
+  /** Elige la posición de caja de texto que menos choque con obstáculos y bordes del lienzo */
+  function placeCalloutBox(anchorX, anchorY, boxW, boxH, outW, outH, avoidRects, preferredDist = 110) {
+    const dirs = [
+      [1, -0.75], [-1, -0.75], [1, 0.75], [-1, 0.75],
+      [0, -1], [0, 1], [1.25, 0], [-1.25, 0]
+    ];
+    let best = null;
+    let bestCost = Infinity;
+    const pad = 22;
+
+    for (const [dx, dy] of dirs) {
+      const len = Math.hypot(dx, dy) || 1;
+      const cx = anchorX + (dx / len) * (preferredDist + boxW * 0.42);
+      const cy = anchorY + (dy / len) * (preferredDist + boxH * 0.42);
+      const bx = Math.max(pad, Math.min(outW - boxW - pad, cx - boxW / 2));
+      const by = Math.max(pad, Math.min(outH - boxH - pad, cy - boxH / 2));
+
+      let cost = Math.hypot((bx + boxW / 2) - cx, (by + boxH / 2) - cy) * 2.5;
+      // Penalizar si cubre su propio ancla
+      if (anchorX >= bx - 18 && anchorX <= bx + boxW + 18 && anchorY >= by - 18 && anchorY <= by + boxH + 18) {
+        cost += 6000;
+      }
+      // Penalizar superposición con cajas/objetos existentes
+      for (const r of avoidRects) {
+        const ox = Math.max(0, Math.min(bx + boxW + 14, r.x + r.w + 14) - Math.max(bx - 14, r.x - 14));
+        const oy = Math.max(0, Math.min(by + boxH + 14, r.y + r.h + 14) - Math.max(by - 14, r.y - 14));
+        if (ox > 0 && oy > 0) cost += ox * oy * 0.4 + 3500;
+      }
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = { x: bx, y: by, w: boxW, h: boxH };
+      }
+    }
+    return best;
+  }
+
+  /** Punto más cercano del borde de un rectángulo a un punto objetivo (para conectar flechas limpiamente) */
+  function rectEdgePoint(rect, tx, ty) {
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    const dx = tx - cx;
+    const dy = ty - cy;
+    if (Math.abs(dx) < 1e-3 && Math.abs(dy) < 1e-3) return { x: cx, y: cy };
+    const sx = Math.abs(dx) > 1e-3 ? (rect.w / 2) / Math.abs(dx) : Infinity;
+    const sy = Math.abs(dy) > 1e-3 ? (rect.h / 2) / Math.abs(dy) : Infinity;
+    const t = Math.min(sx, sy);
+    return { x: cx + dx * t, y: cy + dy * t };
+  }
+
+  function canvasToJpegBytes(canvas, quality = 0.88) {
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    const b64 = dataUrl.split(',')[1];
+    const binStr = atob(b64);
+    const bytes = new Uint8Array(binStr.length);
+    for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+    return bytes;
+  }
+
+  /**
+   * Renderiza una ventana UTM exacta cosiendo todas las Hojas IGN Tommy Guardia que la cubren
+   * y dibuja el lote, vértices, rosa de los vientos y puntos de amarre vial estilo ANATI Panamá.
+   */
+  async function renderIgnMapBox({
+    mode, // 'regional' | 'amarre'
+    points,
+    utmZone,
+    utmHemi,
+    scale,
+    boxWmm,
+    boxHmm,
+    tiePoints = []
+  }) {
+    const Geo = global.TopoGeodesy;
+    let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    for (const p of points) {
+      if (p.e < minE) minE = p.e;
+      if (p.e > maxE) maxE = p.e;
+      if (p.n < minN) minN = p.n;
+      if (p.n > maxN) maxN = p.n;
+    }
+    let cE = (minE + maxE) / 2;
+    let cN = (minN + maxN) / 2;
+
+    // Dimensiones reales en metros en el terreno a la escala exacta 1:scale
+    const groundW = (boxWmm / 1000) * scale;
+    const groundH = (boxHmm / 1000) * scale;
+
+    // En Detalle de Amarre, desplazar suavemente el centro si hay puntos de amarre cercanos para mantenerlos dentro del cuadro
+    if (mode === 'amarre' && tiePoints.length > 0) {
+      let allMinE = minE, allMaxE = maxE, allMinN = minN, allMaxN = maxN;
+      for (const tp of tiePoints) {
+        if (Math.hypot(tp.e - cE, tp.n - cN) <= Math.max(groundW, groundH) * 0.72) {
+          allMinE = Math.min(allMinE, tp.e);
+          allMaxE = Math.max(allMaxE, tp.e);
+          allMinN = Math.min(allMinN, tp.n);
+          allMaxN = Math.max(allMaxN, tp.n);
+        }
+      }
+      if ((allMaxE - allMinE) < groundW * 0.80) cE = (allMinE + allMaxE) / 2;
+      if ((allMaxN - allMinN) < groundH * 0.80) cN = (allMinN + allMaxN) / 2;
+    }
+
+    const winUtm = {
+      minE: cE - groundW / 2,
+      maxE: cE + groundW / 2,
+      minN: cN - groundH / 2,
+      maxN: cN + groundH / 2
+    };
+
+    const swGeo = Geo.utmToLatLon(winUtm.minE, winUtm.minN, utmZone, utmHemi, 'WGS84');
+    const neGeo = Geo.utmToLatLon(winUtm.maxE, winUtm.maxN, utmZone, utmHemi, 'WGS84');
+    const centerGeo = Geo.utmToLatLon((minE + maxE) / 2, (minN + maxN) / 2, utmZone, utmHemi, 'WGS84');
+
+    const primarySheet = findCoveringSheet(centerGeo.lat, centerGeo.lon);
+    const overlappingSheets = findCoveringSheetsInBounds({
+      south: swGeo.lat,
+      north: neGeo.lat,
+      west: swGeo.lon,
+      east: neGeo.lon
+    });
+
+    if (overlappingSheets.length === 0) return null;
+
+    // Cargar todas las hojas IGN que cubren esta ventana en paralelo
+    const loaded = await Promise.all(
+      overlappingSheets.map(async (s) => {
+        try {
+          const img = await loadImage(s.url);
+          return { sheet: s, img };
+        } catch (err) {
+          console.warn('Hoja IGN no pudo cargarse para PDF:', s.code, err);
+          return null;
+        }
+      })
+    );
+    const validLoaded = loaded.filter(Boolean);
+    if (validLoaded.length === 0) return null;
+
+    const outW = mode === 'amarre' ? 1440 : 1100;
+    const outH = Math.round(outW * (boxHmm / boxWmm));
+    const canvas = document.createElement('canvas');
+    canvas.width = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, outW, outH);
+
+    const utmToPx = (e, n) => ({
+      x: ((e - winUtm.minE) / (winUtm.maxE - winUtm.minE)) * outW,
+      y: ((winUtm.maxN - n) / (winUtm.maxN - winUtm.minN)) * outH
+    });
+
+    // Coser cada hoja IGN exactamente en coordenadas UTM sobre el lienzo
+    for (const { sheet, img } of validLoaded) {
+      const b = sheet.bounds;
+      const shSw = Geo.latLonToUtm(b.south, b.west, utmZone, 'WGS84');
+      const shNe = Geo.latLonToUtm(b.north, b.east, utmZone, 'WGS84');
+      const p0 = utmToPx(shSw.easting, shNe.northing); // top-left
+      const p1 = utmToPx(shNe.easting, shSw.northing); // bottom-right
+      ctx.drawImage(img, p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    }
+
+    // Dibujar cuadrícula UTM 1 km muy sutil si alguna zona quedó sin líneas marcadas (coincide 1:1 con las hojas IGN)
+    const firstE = Math.ceil(winUtm.minE / 1000) * 1000;
+    const firstN = Math.ceil(winUtm.minN / 1000) * 1000;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(17, 24, 39, 0.28)';
+    ctx.lineWidth = 1.2;
+    for (let ge = firstE; ge <= winUtm.maxE; ge += 1000) {
+      const gx = utmToPx(ge, winUtm.minN).x;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, outH); ctx.stroke();
+    }
+    for (let gn = firstN; gn <= winUtm.maxN; gn += 1000) {
+      const gy = utmToPx(winUtm.minE, gn).y;
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(outW, gy); ctx.stroke();
+    }
+    ctx.restore();
+
+    const avoidRects = [];
+
+    // Rosa de los vientos en esquina superior izquierda (solo en Localización Regional, igual al ejemplo ANATI)
+    if (mode === 'regional') {
+      const roseX = 95, roseY = 128;
+      drawCompassRose(ctx, roseX, roseY, 54);
+      avoidRects.push({ x: roseX - 66, y: roseY - 92, w: 132, h: 175 });
+    }
+
+    // Polígono del Lote Medido
+    const polyPx = points.map(p => utmToPx(p.e, p.n));
+    const lotCenterPx = utmToPx((minE + maxE) / 2, (minN + maxN) / 2);
+    let maxRadPx = 0;
+    for (const pp of polyPx) {
+      maxRadPx = Math.max(maxRadPx, Math.hypot(pp.x - lotCenterPx.x, pp.y - lotCenterPx.y));
+    }
+
+    ctx.save();
+    if (polyPx.length >= 3) {
       ctx.beginPath();
-      ctx.moveTo(cOut.x, cOut.y);
-      ctx.lineTo(lblX + 75, lblY + 14);
-      ctx.strokeStyle = '#111827';
-      ctx.lineWidth = 2.5;
+      polyPx.forEach((pt, idx) => (idx === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+      ctx.closePath();
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = mode === 'amarre' ? 3.5 : 3.0;
       ctx.stroke();
+    }
+    // Si el lote es muy pequeño a esta escala, garantizar visibilidad con punto sólido
+    if (maxRadPx < 5) {
+      ctx.beginPath();
+      ctx.arc(lotCenterPx.x, lotCenterPx.y, 6, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+    }
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
-      ctx.strokeStyle = '#111827';
-      ctx.lineWidth = 2;
-      ctx.fillRect(lblX, lblY, 168, 30);
-      ctx.strokeRect(lblX, lblY, 168, 30);
-      ctx.fillStyle = '#b91c1c';
-      ctx.font = 'bold 17px Arial, sans-serif';
+    // Círculo resaltador del lote (estilo ANATI, con holgura para los números de vértice)
+    const ringR = Math.max(mode === 'amarre' ? 62 : 28, Math.min(outW * 0.22, maxRadPx + (mode === 'amarre' ? 36 : 16)));
+    ctx.beginPath();
+    ctx.arc(lotCenterPx.x, lotCenterPx.y, ringR, 0, Math.PI * 2);
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = mode === 'amarre' ? 4.2 : 3.5;
+    ctx.stroke();
+    ctx.restore();
+
+    avoidRects.push({
+      x: lotCenterPx.x - ringR - 12,
+      y: lotCenterPx.y - ringR - 12,
+      w: (ringR + 12) * 2,
+      h: (ringR + 12) * 2
+    });
+
+    // Vértices principales numerados en DETALLE DE AMARRE (como 1, 2, 4, 6 del ejemplo ANATI)
+    if (mode === 'amarre' && points.length >= 2) {
+      const principal = selectPrincipalVertices(points, 6);
+      ctx.save();
+      ctx.font = 'bold 24px Georgia, "Times New Roman", serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('GLOBO MEDIDO', lblX + 84, lblY + 15);
+      const placedLbls = [];
+
+      for (const v of principal) {
+        const vp = utmToPx(v.pt.e, v.pt.n);
+        let dx = vp.x - lotCenterPx.x;
+        let dy = vp.y - lotCenterPx.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 1) { dx = 1; dy = -1; } else { dx /= d; dy /= d; }
+        const pushOut = Math.max(15, maxRadPx < 16 ? 20 : 16);
+        const lx = vp.x + dx * pushOut;
+        const ly = vp.y + dy * pushOut;
+
+        // Evitar que dos números de vértice queden montados uno encima del otro
+        if (placedLbls.some(p => Math.hypot(p.x - lx, p.y - ly) < 22)) continue;
+        placedLbls.push({ x: lx, y: ly });
+
+        // Halo blanco discreto para máxima legibilidad sobre curvas/trama del IGN
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+        ctx.strokeText(v.label, lx, ly);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillText(v.label, lx, ly);
+      }
       ctx.restore();
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      const b64 = dataUrl.split(',')[1];
-      const binStr = atob(b64);
-      const bytes = new Uint8Array(binStr.length);
-      for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
-
-      return {
-        jpegBytes: bytes,
-        width: outW,
-        height: outH,
-        sheetCode: sheet.code,
-        sheetName: sheet.name
-      };
-    } catch (err) {
-      console.warn('No se pudo recortar la hoja IGN para el PDF:', err);
-      return null;
     }
+
+    // Callout "LOTE MEDIDO" con flecha al círculo del lote
+    const loteBoxW = mode === 'amarre' ? 215 : 230;
+    const loteBoxH = mode === 'amarre' ? 114 : 122;
+    const loteBox = placeCalloutBox(
+      lotCenterPx.x, lotCenterPx.y, loteBoxW, loteBoxH, outW, outH, avoidRects,
+      ringR + (mode === 'amarre' ? 75 : 55)
+    );
+    avoidRects.push(loteBox);
+
+    const loteStart = rectEdgePoint(loteBox, lotCenterPx.x, lotCenterPx.y);
+    const dirToLoteX = lotCenterPx.x - loteStart.x;
+    const dirToLoteY = lotCenterPx.y - loteStart.y;
+    const distToLote = Math.hypot(dirToLoteX, dirToLoteY) || 1;
+    const targetRingX = lotCenterPx.x - (dirToLoteX / distToLote) * (ringR * 0.72);
+    const targetRingY = lotCenterPx.y - (dirToLoteY / distToLote) * (ringR * 0.72);
+
+    ctx.save();
+    ctx.strokeStyle = '#111827';
+    ctx.fillStyle = '#111827';
+    ctx.lineWidth = 3.0;
+    drawArrowHead(ctx, loteStart.x, loteStart.y, targetRingX, targetRingY, 22);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+    ctx.strokeStyle = '#111827';
+    ctx.lineWidth = 2.6;
+    ctx.fillRect(loteBox.x, loteBox.y, loteBox.w, loteBox.h);
+    ctx.strokeRect(loteBox.x, loteBox.y, loteBox.w, loteBox.h);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `bold ${mode === 'amarre' ? 36 : 40}px Georgia, "Times New Roman", serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('LOTE', loteBox.x + loteBox.w / 2, loteBox.y + loteBox.h * 0.34);
+    ctx.fillText('MEDIDO', loteBox.x + loteBox.w / 2, loteBox.y + loteBox.h * 0.70);
+    ctx.restore();
+
+    // En DETALLE DE AMARRE: dibujar las 2 intersecciones de calles cercanas con sus cajas E / N
+    const drawnTies = [];
+    if (mode === 'amarre' && tiePoints.length > 0) {
+      for (const tp of tiePoints.slice(0, 2)) {
+        const tpPx = utmToPx(tp.e, tp.n);
+        if (tpPx.x < 16 || tpPx.x > outW - 16 || tpPx.y < 16 || tpPx.y > outH - 16) continue;
+
+        const boxW = 285, boxH = 96;
+        const tBox = placeCalloutBox(tpPx.x, tpPx.y, boxW, boxH, outW, outH, avoidRects, 85);
+        avoidRects.push(tBox);
+
+        const edgePt = rectEdgePoint(tBox, tpPx.x, tpPx.y);
+        ctx.save();
+        // Punto exacto en la intersección vial
+        ctx.beginPath();
+        ctx.arc(tpPx.x, tpPx.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = '#111827';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+
+        // Flecha desde la caja hacia la intersección
+        ctx.strokeStyle = '#111827';
+        ctx.fillStyle = '#111827';
+        ctx.lineWidth = 2.8;
+        drawArrowHead(ctx, edgePt.x, edgePt.y, tpPx.x, tpPx.y, 20);
+
+        // Caja blanca con borde negro + coordenadas E / N (formato ANATI exacto)
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.strokeStyle = '#111827';
+        ctx.lineWidth = 2.4;
+        ctx.fillRect(tBox.x, tBox.y, tBox.w, tBox.h);
+        ctx.strokeRect(tBox.x, tBox.y, tBox.w, tBox.h);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.font = 'bold 34px "Courier New", Consolas, monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`E:${Math.round(tp.e)}`, tBox.x + 18, tBox.y + tBox.h * 0.33);
+        ctx.fillText(`N:${Math.round(tp.n)}`, tBox.x + 18, tBox.y + tBox.h * 0.72);
+        ctx.restore();
+
+        drawnTies.push(tp);
+      }
+    }
+
+    const bytes = canvasToJpegBytes(canvas, 0.88);
+    const mainSheet = primarySheet || validLoaded[0].sheet;
+
+    return {
+      jpegBytes: bytes,
+      width: outW,
+      height: outH,
+      scale,
+      sheetCode: mainSheet.code,
+      sheetName: mainSheet.name,
+      utmBounds: winUtm,
+      tiePoints: drawnTies,
+      sheetsUsed: validLoaded.map(v => v.sheet.code)
+    };
+  }
+
+  /**
+   * Genera AMBOS cuadros cartográficos IGN Tommy Guardia para el PDF ANATI:
+   * - Localización Regional (1:25,000 o 1:40,000 según tamaño del lote o selección manual)
+   * - Detalle de Amarre (1:10,000 o 1:15,000 con vértices principales + 2 intersecciones de calles cercanas)
+   */
+  async function generateAnatiMapsForPdf(points, options = {}) {
+    const Geo = global.TopoGeodesy;
+    const utmZone = Number(options.utmZone) || 17;
+    const utmHemi = options.utmHemi || 'N';
+    if (!points || points.length === 0 || !Geo) return null;
+
+    const validPts = points.filter(p => Geo.isPlausibleUtm(p.e, p.n));
+    if (validPts.length === 0) return null;
+
+    let minE = Infinity, maxE = -Infinity, minN = Infinity, maxN = -Infinity;
+    for (const p of validPts) {
+      if (p.e < minE) minE = p.e;
+      if (p.e > maxE) maxE = p.e;
+      if (p.n < minN) minN = p.n;
+      if (p.n > maxN) maxN = p.n;
+    }
+    const maxSpan = Math.max(maxE - minE, maxN - minN);
+    const cE = (minE + maxE) / 2;
+    const cN = (minN + maxN) / 2;
+
+    // Selección automática de escalas según tamaño del lote/finca
+    const regScaleOpt = options.regionalScale;
+    const amaScaleOpt = options.amarreScale;
+    const regionalScale = (Number(regScaleOpt) === 25000 || Number(regScaleOpt) === 40000)
+      ? Number(regScaleOpt)
+      : (maxSpan <= 900 ? 25000 : 40000);
+    const amarreScale = (Number(amaScaleOpt) === 10000 || Number(amaScaleOpt) === 15000)
+      ? Number(amaScaleOpt)
+      : (maxSpan <= 450 ? 10000 : 15000);
+
+    // Puntos de amarre vial: usar los proporcionados por el usuario, o auto-detectar 2 intersecciones OSM cercanas
+    let tiePoints = (options.tiePoints || []).filter(t => t && Number.isFinite(t.e) && Number.isFinite(t.n));
+    if (tiePoints.length === 0 && options.autoDetectTies !== false) {
+      try {
+        const cGeo = Geo.utmToLatLon(cE, cN, utmZone, utmHemi, 'WGS84');
+        const radiusM = amarreScale === 10000 ? 950 : 1450;
+        tiePoints = await findNearbyRoadIntersections(cGeo.lat, cGeo.lon, utmZone, utmHemi, radiusM);
+      } catch (err) {
+        console.warn('Auto-detección de intersecciones viales omitida:', err);
+      }
+    }
+
+    const [regional, amarre] = await Promise.all([
+      renderIgnMapBox({
+        mode: 'regional',
+        points: validPts,
+        utmZone,
+        utmHemi,
+        scale: regionalScale,
+        boxWmm: options.regionalBoxWmm || 110,
+        boxHmm: options.regionalBoxHmm || 100
+      }),
+      renderIgnMapBox({
+        mode: 'amarre',
+        points: validPts,
+        utmZone,
+        utmHemi,
+        scale: amarreScale,
+        boxWmm: options.amarreBoxWmm || 160,
+        boxHmm: options.amarreBoxHmm || 148,
+        tiePoints
+      })
+    ]);
+
+    if (!regional && !amarre) return null;
+    return {
+      regional,
+      amarre,
+      sheetCode: (regional && regional.sheetCode) || (amarre && amarre.sheetCode) || '',
+      tiePoints
+    };
+  }
+
+  /** Alias de compatibilidad hacia atrás */
+  async function generateRegionalCropForPdf(points, utmZone = 17, utmHemi = 'N') {
+    const res = await generateAnatiMapsForPdf(points, { utmZone, utmHemi, autoDetectTies: false });
+    return res ? res.regional : null;
   }
 
   global.TopoIGN = {
@@ -440,6 +1006,9 @@
     getEnabledSheets,
     processUploadedSheetFile,
     findCoveringSheet,
+    findCoveringSheetsInBounds,
+    findNearbyRoadIntersections,
+    generateAnatiMapsForPdf,
     generateRegionalCropForPdf
   };
 })(window);

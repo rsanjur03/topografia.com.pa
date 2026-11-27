@@ -1805,6 +1805,46 @@
             <input id="anatiNotaExtra" type="text" placeholder="Observaciones adicionales para ANATI" />
           </label>
         </div>
+
+        <div class="row-actions mt-sm" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+          <div class="form-section-title" style="margin:0;">Localización Regional y Detalle de Amarre (IGN Tommy Guardia)</div>
+          <button id="btnAutoDetectTies" type="button" class="chip-btn" title="Buscar automáticamente 2 intersecciones de calles cercanas usando OpenStreetMap">🔍 Auto-detectar 2 Calles Cercanas</button>
+        </div>
+        <div class="grid-2 mt-xs">
+          <label class="field">
+            <span>Escala Localización Regional</span>
+            <select id="anatiRegScale">
+              <option value="auto" selected>Automática (1:25,000 lote / 1:40,000 finca)</option>
+              <option value="25000">1 : 25,000</option>
+              <option value="40000">1 : 40,000</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Escala Detalle de Amarre</span>
+            <select id="anatiAmarreScale">
+              <option value="auto" selected>Automática (1:10,000 lote / 1:15,000 finca)</option>
+              <option value="10000">1 : 10,000</option>
+              <option value="15000">1 : 15,000</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid-2 mt-xs">
+          <div class="field">
+            <span>Intersección Vial 1 (Amarre) <button id="btnPickTie1" type="button" class="chip-btn" style="padding:1px 6px;font-size:10.5px;margin-left:4px;">📍 Elegir en mapa</button></span>
+            <div class="grid-2">
+              <input id="anatiTie1E" type="number" step="1" placeholder="Este (ej. 328229)" />
+              <input id="anatiTie1N" type="number" step="1" placeholder="Norte (ej. 957346)" />
+            </div>
+          </div>
+          <div class="field">
+            <span>Intersección Vial 2 (Amarre) <button id="btnPickTie2" type="button" class="chip-btn" style="padding:1px 6px;font-size:10.5px;margin-left:4px;">📍 Elegir en mapa</button></span>
+            <div class="grid-2">
+              <input id="anatiTie2E" type="number" step="1" placeholder="Este (ej. 327934)" />
+              <input id="anatiTie2N" type="number" step="1" placeholder="Norte (ej. 956972)" />
+            </div>
+          </div>
+        </div>
+        <div id="anatiTieStatus" class="muted-meta mt-xs">Si se dejan vacíos, al descargar el PDF se buscarán automáticamente las 2 intersecciones de calles más cercanas (o puedes marcarlas directo sobre la hoja IGN).</div>
       </div>
 
       <!-- SUB-TAB 2: CAPAS, FORMATO DXF Y TAMAÑO DE PAPEL PDF -->

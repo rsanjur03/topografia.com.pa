@@ -162,8 +162,8 @@
     return arr;
   }
 
-  /** Empaqueta un stream vectorial (+ imagen JPEG opcional) en un Uint8Array PDF 1.4 con xref 100% exacto */
-  function buildPdfDocument(pageWidthPt, pageHeightPt, streamContent, jpegImg = null) {
+  /** Empaqueta un stream vectorial (+ múltiples imágenes JPEG XObject) en un Uint8Array PDF 1.4 con xref 100% exacto */
+  function buildPdfDocument(pageWidthPt, pageHeightPt, streamContent, jpegImages = []) {
     const chunks = [];
     let byteOffset = 0;
     const offsets = [0];
@@ -181,8 +181,17 @@
 
     pushStr('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
 
-    const hasImg = Boolean(jpegImg && jpegImg.jpegBytes && jpegImg.jpegBytes.length > 0);
-    const xobjRes = hasImg ? ' /XObject << /Im1 8 0 R >>' : '';
+    // Normalizar entrada (acepta objeto único legacy o arreglo [{ name: 'Im1', img }, ...])
+    let imgEntries = [];
+    if (Array.isArray(jpegImages)) {
+      imgEntries = jpegImages.filter(e => e && e.img && e.img.jpegBytes && e.img.jpegBytes.length > 0);
+    } else if (jpegImages && jpegImages.jpegBytes && jpegImages.jpegBytes.length > 0) {
+      imgEntries = [{ name: 'Im1', img: jpegImages }];
+    }
+
+    const xobjRes = imgEntries.length > 0
+      ? ` /XObject << ${imgEntries.map((e, i) => `/${e.name} ${8 + i} 0 R`).join(' ')} >>`
+      : '';
 
     startObj(1);
     pushStr('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
@@ -211,14 +220,15 @@
     pushBytes(streamBytes);
     pushStr('endstream\nendobj\n');
 
-    const totalObjs = hasImg ? 8 : 7;
-    if (hasImg) {
-      startObj(8);
+    const totalObjs = 7 + imgEntries.length;
+    for (let i = 0; i < imgEntries.length; i++) {
+      const { img } = imgEntries[i];
+      startObj(8 + i);
       pushStr(
-        `<< /Type /XObject /Subtype /Image /Width ${jpegImg.width} /Height ${jpegImg.height} ` +
-        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegImg.jpegBytes.length} >>\nstream\n`
+        `<< /Type /XObject /Subtype /Image /Width ${img.width} /Height ${img.height} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpegBytes.length} >>\nstream\n`
       );
-      pushBytes(jpegImg.jpegBytes);
+      pushBytes(img.jpegBytes);
       pushStr('\nendstream\nendobj\n');
     }
 
@@ -237,6 +247,43 @@
       pos += c.length;
     }
     return out;
+  }
+
+  /** Dibuja etiquetas UTM 1 km exteriores estilo ANATI (ej. 3²⁸ arriba y 9⁵⁷ a la derecha) */
+  function drawUtmBorderLabelsPdf(cv, boxX, boxY, boxW, boxH, utmBounds) {
+    if (!utmBounds) return;
+    const { minE, maxE, minN, maxN } = utmBounds;
+    const spanE = maxE - minE;
+    const spanN = maxN - minN;
+    if (spanE <= 0 || spanN <= 0) return;
+
+    const firstE = Math.ceil(minE / 1000) * 1000;
+    const firstN = Math.ceil(minN / 1000) * 1000;
+
+    cv.setStroke(0.1, 0.12, 0.16, 0.3);
+    // Etiquetas Este (borde superior): ej. 328000 -> "3" + superíndice "28"
+    for (let ge = firstE; ge <= maxE; ge += 1000) {
+      const px = boxX + ((ge - minE) / spanE) * boxW;
+      if (px < boxX + 4 || px > boxX + boxW - 4) continue;
+      cv.line(px, boxY + boxH, px, boxY + boxH + 1.4);
+      const km = Math.round(ge / 1000);
+      const big = String(Math.floor(km / 100));
+      const small = String(km % 100).padStart(2, '0');
+      cv.text(big, px - 1.3, boxY + boxH + 3.2, 2.5, { font: 'F2', align: 'right' });
+      cv.text(small, px - 1.0, boxY + boxH + 4.1, 1.85, { font: 'F1', align: 'left' });
+    }
+
+    // Etiquetas Norte (borde derecho): ej. 957000 -> "9" + superíndice "57"
+    for (let gn = firstN; gn <= maxN; gn += 1000) {
+      const py = boxY + ((gn - minN) / spanN) * boxH;
+      if (py < boxY + 4 || py > boxY + boxH - 4) continue;
+      cv.line(boxX + boxW, py, boxX + boxW + 1.4, py);
+      const km = Math.round(gn / 1000);
+      const big = String(Math.floor(km / 100));
+      const small = String(km % 100).padStart(2, '0');
+      cv.text(big, boxX + boxW + 2.2, py - 0.3, 2.5, { font: 'F2', align: 'left' });
+      cv.text(small, boxX + boxW + 3.8, py + 0.6, 1.85, { font: 'F1', align: 'left' });
+    }
   }
 
   /**
@@ -456,56 +503,74 @@
     }
 
     // 6. CUADROS LATERALES IZQUIERDOS: LOCALIZACION REGIONAL + NORTE + DETALLE DE AMARRE
-    // 6a. Localización Regional (incrusta recorte real de la Hoja IGN si existe cobertura!)
+    // 6a. Localización Regional (x=16..126, y=348..448 -> 110 x 100 mm, con margen exterior para etiquetas UTM 1 km)
     const regCrop = opts.regionalCrop || null;
+    const amaCrop = opts.amarreCrop || null;
     const hojaCode = (regCrop && regCrop.sheetCode) ? regCrop.sheetCode : (a.hojaIgn || 'IGN PANAMA');
     const cE = (minE + maxE) / 2, cN = (minN + maxN) / 2;
+    const pdfImages = [];
 
+    const regX = 16, regY = 348, regW = 110, regH = 100;
     if (regCrop && regCrop.jpegBytes) {
-      cv.drawImage('Im1', 15, 350, 115, 104);
-      cv.setStroke(0.1, 0.12, 0.16, 0.45);
-      cv.rect(15, 350, 115, 104, 'S');
-      cv.text(`LOCALIZACION REGIONAL - HOJA ${hojaCode.toUpperCase()}`, 72.5, 344, 2.6, { font: 'F2', align: 'center' });
-      cv.text('HOJA IGN 1:25,000 (RECORTE GEORREFERENCIADO)', 72.5, 339.5, 2.1, { font: 'F1', align: 'center' });
+      pdfImages.push({ name: 'Im1', img: regCrop });
+      cv.drawImage('Im1', regX, regY, regW, regH);
+      cv.setStroke(0.08, 0.1, 0.14, 0.45);
+      cv.rect(regX, regY, regW, regH, 'S');
+      drawUtmBorderLabelsPdf(cv, regX, regY, regW, regH, regCrop.utmBounds);
+      const regScaleLbl = Number(regCrop.scale || 25000).toLocaleString('en-US');
+      cv.text('LOCALIZACION REGIONAL', regX + regW / 2, regY - 5.2, 2.7, { font: 'F2', align: 'center' });
+      cv.text(`HOJA ${hojaCode.toUpperCase()} - ESCALA 1:${regScaleLbl}`, regX + regW / 2, regY - 9.6, 2.35, { font: 'F1', align: 'center' });
     } else {
       cv.setFill(0.97, 0.98, 0.99);
-      cv.rect(15, 350, 115, 104, 'f');
+      cv.rect(regX, regY, regW, regH, 'f');
       cv.setStroke(0.12, 0.15, 0.2, 0.35);
-      cv.rect(15, 350, 115, 104, 'S');
+      cv.rect(regX, regY, regW, regH, 'S');
       cv.setStroke(0.7, 0.75, 0.82, 0.15);
-      cv.line(15, 402, 130, 402);
-      cv.line(72.5, 350, 72.5, 454);
+      cv.line(regX, regY + regH / 2, regX + regW, regY + regH / 2);
+      cv.line(regX + regW / 2, regY, regX + regW / 2, regY + regH);
       cv.setFill(0.85, 0.15, 0.15);
-      cv.circle(72.5, 402, 2.2, 'f');
+      cv.circle(regX + regW / 2, regY + regH / 2, 2.2, 'f');
       cv.setStroke(0.1, 0.1, 0.1, 0.25);
-      cv.line(72.5, 402, 79, 410);
+      cv.line(regX + regW / 2, regY + regH / 2, regX + regW / 2 + 6, regY + regH / 2 + 8);
       cv.setFill(1, 1, 1);
-      cv.rect(79, 409, 34, 8, 'f');
-      cv.rect(79, 409, 34, 8, 'S');
-      cv.text('GLOBO MEDIDO', 96, 413, 2.1, { font: 'F2', align: 'center' });
-      cv.text(`E: ${cE.toFixed(0)}`, 72.5, 354, 2.0, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
-      cv.text(`N: ${cN.toFixed(0)}`, 128, 405, 2.0, { font: 'F3', align: 'right', color: [0.3, 0.35, 0.42] });
-      cv.text(`LOCALIZACION REGIONAL - HOJA ${hojaCode.toUpperCase()}`, 72.5, 344, 2.6, { font: 'F2', align: 'center' });
-      cv.text('ESCALA 1:40,000', 72.5, 339.5, 2.3, { font: 'F1', align: 'center' });
+      cv.rect(regX + regW / 2 + 6, regY + regH / 2 + 7, 34, 8, 'f');
+      cv.rect(regX + regW / 2 + 6, regY + regH / 2 + 7, 34, 8, 'S');
+      cv.text('LOTE MEDIDO', regX + regW / 2 + 23, regY + regH / 2 + 11, 2.1, { font: 'F2', align: 'center' });
+      cv.text(`E: ${cE.toFixed(0)}`, regX + regW / 2, regY + 4, 2.0, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
+      cv.text(`N: ${cN.toFixed(0)}`, regX + regW - 2, regY + regH / 2 + 3, 2.0, { font: 'F3', align: 'right', color: [0.3, 0.35, 0.42] });
+      cv.text('LOCALIZACION REGIONAL', regX + regW / 2, regY - 5.2, 2.7, { font: 'F2', align: 'center' });
+      cv.text(`HOJA ${hojaCode.toUpperCase()} - ESCALA 1:25,000`, regX + regW / 2, regY - 9.6, 2.35, { font: 'F1', align: 'center' });
     }
 
-    // 6b. Flecha Norte de Cuadrícula
-    drawNorthArrowPdf(cv, 160, 395, 16);
+    // 6b. Flecha Norte de Cuadrícula (a la derecha de Localización Regional)
+    drawNorthArrowPdf(cv, 163, 395, 15.5);
 
-    // 6c. Detalle de Amarre
-    cv.setFill(0.97, 0.98, 0.99);
-    cv.rect(15, 132, 170, 160, 'f');
-    cv.setStroke(0.12, 0.15, 0.2, 0.35);
-    cv.rect(15, 132, 170, 160, 'S');
-    cv.setStroke(0.7, 0.75, 0.82, 0.15);
-    cv.line(15, 212, 185, 212);
-    cv.line(100, 132, 100, 292);
-    cv.setFill(0.02, 0.48, 0.32);
-    cv.circle(100, 212, 2.4, 'f');
-    cv.text('GLOBO MEDIDO', 105, 219, 2.4, { font: 'F2' });
-    cv.text(`P1: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, 100, 137, 2.1, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
-    cv.text('DETALLE DE AMARRE', 100, 125.5, 2.7, { font: 'F2', align: 'center' });
-    cv.text('ESCALA 1:15,000', 100, 121, 2.3, { font: 'F1', align: 'center' });
+    // 6c. Detalle de Amarre (x=16..176, y=134..282 -> 160 x 148 mm, con vértices e intersecciones viales)
+    const amaX = 16, amaY = 134, amaW = 160, amaH = 148;
+    if (amaCrop && amaCrop.jpegBytes) {
+      pdfImages.push({ name: 'Im2', img: amaCrop });
+      cv.drawImage('Im2', amaX, amaY, amaW, amaH);
+      cv.setStroke(0.08, 0.1, 0.14, 0.45);
+      cv.rect(amaX, amaY, amaW, amaH, 'S');
+      drawUtmBorderLabelsPdf(cv, amaX, amaY, amaW, amaH, amaCrop.utmBounds);
+      const amaScaleLbl = Number(amaCrop.scale || 10000).toLocaleString('en-US');
+      cv.text('DETALLE DE AMARRE', amaX + amaW / 2, amaY - 5.5, 2.75, { font: 'F2', align: 'center' });
+      cv.text(`ESCALA 1:${amaScaleLbl}`, amaX + amaW / 2, amaY - 10.0, 2.35, { font: 'F1', align: 'center' });
+    } else {
+      cv.setFill(0.97, 0.98, 0.99);
+      cv.rect(amaX, amaY, amaW, amaH, 'f');
+      cv.setStroke(0.12, 0.15, 0.2, 0.35);
+      cv.rect(amaX, amaY, amaW, amaH, 'S');
+      cv.setStroke(0.7, 0.75, 0.82, 0.15);
+      cv.line(amaX, amaY + amaH / 2, amaX + amaW, amaY + amaH / 2);
+      cv.line(amaX + amaW / 2, amaY, amaX + amaW / 2, amaY + amaH);
+      cv.setFill(0.02, 0.48, 0.32);
+      cv.circle(amaX + amaW / 2, amaY + amaH / 2, 2.4, 'f');
+      cv.text('LOTE MEDIDO', amaX + amaW / 2 + 5, amaY + amaH / 2 + 6, 2.4, { font: 'F2' });
+      cv.text(`P1: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, amaX + amaW / 2, amaY + 5, 2.1, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
+      cv.text('DETALLE DE AMARRE', amaX + amaW / 2, amaY - 5.5, 2.75, { font: 'F2', align: 'center' });
+      cv.text('ESCALA 1:10,000', amaX + amaW / 2, amaY - 10.0, 2.35, { font: 'F1', align: 'center' });
+    }
 
     // 7. VENTANA PRINCIPAL DE DIBUJO A ESCALA EXACTA 1:E (x=195..454, y=128..452)
     const winX1 = 195, winY1 = 128, winX2 = 454, winY2 = 452;
@@ -617,7 +682,7 @@
     cv.text('Generado con topografia.com.pa', 12, 6, 1.8, { font: 'F1', color: [0.45, 0.5, 0.58] });
 
     const stream = cv.buildStream();
-    return buildPdfDocument(pageWmm * MM2PT, pageHmm * MM2PT, stream, regCrop);
+    return buildPdfDocument(pageWmm * MM2PT, pageHmm * MM2PT, stream, pdfImages);
   }
 
   function drawAnatiTablePdf(cv, cfg) {

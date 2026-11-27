@@ -384,6 +384,9 @@
     } else if (mode === 'moveDest') {
       $('pickBannerText').textContent = 'Haz clic en el mapa para elegir la nueva ubicación del vértice base';
       banner.classList.remove('hidden');
+    } else if (mode === 'tie1' || mode === 'tie2') {
+      $('pickBannerText').textContent = `Haz clic sobre una intersección de calles cercana para el Amarre Vial ${mode === 'tie1' ? '1' : '2'}`;
+      banner.classList.remove('hidden');
     } else {
       banner.classList.add('hidden');
     }
@@ -1590,7 +1593,68 @@
       const metrics = C.polygonMetrics(state.points, state.closed && state.points.length >= 3);
       const lotNote = (state.lotDivision && state.lotDivision.ok) ? ` + ${state.lotDivision.lots.length} lotes` : '';
       $('dxfSummaryMeta').textContent = `${state.points.length} pts · ${DXF.formatAnatiArea(metrics.areaM2)}${lotNote}`;
+
+      // Auto-actualizar código de Hoja IGN según la ubicación real del polígono actual
+      if (global.TopoIGN && state.crsMode === 'utm' && global.TopoGeodesy) {
+        const valid = state.points.filter(p => global.TopoGeodesy.isPlausibleUtm(p.e, p.n));
+        if (valid.length > 0) {
+          const avgE = valid.reduce((s, p) => s + p.e, 0) / valid.length;
+          const avgN = valid.reduce((s, p) => s + p.n, 0) / valid.length;
+          const g = global.TopoGeodesy.utmToLatLon(avgE, avgN, state.utmZone, state.utmHemi, 'WGS84');
+          const sh = global.TopoIGN.findCoveringSheet(g.lat, g.lon);
+          if (sh && $('anatiHojaIgn')) $('anatiHojaIgn').value = sh.code;
+        }
+      }
       dxfDialog.showModal();
+    });
+
+    const readAnatiTiePoints = () => {
+      const ties = [];
+      const e1 = parseFloat($('anatiTie1E')?.value), n1 = parseFloat($('anatiTie1N')?.value);
+      const e2 = parseFloat($('anatiTie2E')?.value), n2 = parseFloat($('anatiTie2N')?.value);
+      if (Number.isFinite(e1) && Number.isFinite(n1)) ties.push({ e: e1, n: n1 });
+      if (Number.isFinite(e2) && Number.isFinite(n2)) ties.push({ e: e2, n: n2 });
+      return ties;
+    };
+
+    $('btnAutoDetectTies')?.addEventListener('click', async () => {
+      if (!global.TopoIGN || state.crsMode !== 'utm' || !global.TopoGeodesy) {
+        return showToast('La búsqueda de calles cercanas requiere coordenadas UTM WGS84.');
+      }
+      const valid = state.points.filter(p => global.TopoGeodesy.isPlausibleUtm(p.e, p.n));
+      if (valid.length === 0) return showToast('No hay puntos UTM válidos para buscar intersecciones.');
+      const btn = $('btnAutoDetectTies');
+      const statusEl = $('anatiTieStatus');
+      btn.disabled = true;
+      statusEl.textContent = 'Buscando intersecciones de calles cercanas en OpenStreetMap...';
+      try {
+        const avgE = valid.reduce((s, p) => s + p.e, 0) / valid.length;
+        const avgN = valid.reduce((s, p) => s + p.n, 0) / valid.length;
+        const g = global.TopoGeodesy.utmToLatLon(avgE, avgN, state.utmZone, state.utmHemi, 'WGS84');
+        const ties = await global.TopoIGN.findNearbyRoadIntersections(g.lat, g.lon, state.utmZone, state.utmHemi, 1400);
+        if (ties.length === 0) {
+          statusEl.textContent = 'No se detectaron cruces viales cercanos en OSM. Puedes marcarlos manualmente con "📍 Elegir en mapa".';
+        } else {
+          if (ties[0]) { $('anatiTie1E').value = Math.round(ties[0].e); $('anatiTie1N').value = Math.round(ties[0].n); }
+          if (ties[1]) { $('anatiTie2E').value = Math.round(ties[1].e); $('anatiTie2N').value = Math.round(ties[1].n); }
+          const desc = ties.map((t, i) => `Cruce ${i + 1}: E ${Math.round(t.e)}, N ${Math.round(t.n)} (${Math.round(t.dist)} m)`).join(' · ');
+          statusEl.textContent = `✓ ${ties.length} intersección(es) detectada(s): ${desc}`;
+          showToast(`${ties.length} intersecciones viales detectadas`);
+        }
+      } catch (err) {
+        statusEl.textContent = `Error consultando calles: ${err.message}. Usa "📍 Elegir en mapa".`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $('btnPickTie1')?.addEventListener('click', () => {
+      dxfDialog.close();
+      setMapPickMode('tie1');
+    });
+    $('btnPickTie2')?.addEventListener('click', () => {
+      dxfDialog.close();
+      setMapPickMode('tie2');
     });
 
     $('dxfTextScale').addEventListener('input', (e) => {
@@ -1629,17 +1693,43 @@
 
     $('btnDownloadPdf').addEventListener('click', async () => {
       const btn = $('btnDownloadPdf');
+      const prevTxt = btn.textContent;
       try {
         if (!global.TopoPDF) throw new Error('Módulo PDF no disponible.');
         btn.disabled = true;
+        btn.textContent = 'Generando mapas IGN...';
         const opts = getExportOpts();
-        // Recortar automáticamente la Hoja IGN que cubra el polígono para incrustarla en LOCALIZACION REGIONAL
+
+        // Generar Localización Regional (1:25k / 1:40k) + Detalle de Amarre (1:10k / 1:15k) con Hojas IGN Tommy Guardia
         if (global.TopoIGN && state.crsMode === 'utm') {
-          const crop = await global.TopoIGN.generateRegionalCropForPdf(state.points, state.utmZone, state.utmHemi);
-          if (crop) {
-            opts.regionalCrop = crop;
-            if (!opts.anati.hojaIgn || opts.anati.hojaIgn === '3642 II NE') {
-              opts.anati.hojaIgn = crop.sheetCode;
+          const maps = await global.TopoIGN.generateAnatiMapsForPdf(state.points, {
+            utmZone: state.utmZone,
+            utmHemi: state.utmHemi,
+            regionalScale: $('anatiRegScale')?.value || 'auto',
+            amarreScale: $('anatiAmarreScale')?.value || 'auto',
+            tiePoints: readAnatiTiePoints(),
+            autoDetectTies: true,
+            regionalBoxWmm: 110,
+            regionalBoxHmm: 100,
+            amarreBoxWmm: 160,
+            amarreBoxHmm: 148
+          });
+          if (maps) {
+            if (maps.regional) opts.regionalCrop = maps.regional;
+            if (maps.amarre) opts.amarreCrop = maps.amarre;
+            if (maps.sheetCode) {
+              opts.anati.hojaIgn = maps.sheetCode;
+              if ($('anatiHojaIgn')) $('anatiHojaIgn').value = maps.sheetCode;
+            }
+            if (maps.tiePoints && maps.tiePoints.length > 0 && readAnatiTiePoints().length === 0) {
+              if (maps.tiePoints[0] && $('anatiTie1E')) {
+                $('anatiTie1E').value = Math.round(maps.tiePoints[0].e);
+                $('anatiTie1N').value = Math.round(maps.tiePoints[0].n);
+              }
+              if (maps.tiePoints[1] && $('anatiTie2E')) {
+                $('anatiTie2E').value = Math.round(maps.tiePoints[1].e);
+                $('anatiTie2N').value = Math.round(maps.tiePoints[1].n);
+              }
             }
           }
         }
@@ -1648,13 +1738,15 @@
         const filename = `${base}_ANATI.pdf`;
         IO.downloadFile(filename, pdfBytes, 'application/pdf');
         dxfDialog.close();
-        showToast(opts.regionalCrop
-          ? `PDF ANATI "${filename}" descargado con Hoja IGN ${opts.regionalCrop.sheetCode}`
-          : `PDF Vectorial ANATI "${filename}" descargado`);
+        const extra = opts.regionalCrop
+          ? ` (Hoja ${opts.regionalCrop.sheetCode} · Reg 1:${opts.regionalCrop.scale.toLocaleString('en-US')}${opts.amarreCrop ? ` · Amarre 1:${opts.amarreCrop.scale.toLocaleString('en-US')}` : ''})`
+          : '';
+        showToast(`PDF ANATI "${filename}" descargado${extra}`);
       } catch (err) {
         showToast(`Error al generar PDF: ${err.message}`);
       } finally {
         btn.disabled = false;
+        btn.textContent = prevTxt;
       }
     });
 
@@ -1923,6 +2015,18 @@
           $('moveDestN').value = coord.n.toFixed(3);
           setMapPickMode(null);
           showToast(`Destino capturado: E ${coord.e.toFixed(3)}, N ${coord.n.toFixed(3)}. Pulsa "Trasladar Vértice a Destino".`);
+        } else if (mode === 'tie1' || mode === 'tie2') {
+          const isFirst = mode === 'tie1';
+          const eId = isFirst ? 'anatiTie1E' : 'anatiTie2E';
+          const nId = isFirst ? 'anatiTie1N' : 'anatiTie2N';
+          if ($(eId)) $(eId).value = Math.round(coord.e);
+          if ($(nId)) $(nId).value = Math.round(coord.n);
+          setMapPickMode(null);
+          if ($('anatiTieStatus')) {
+            $('anatiTieStatus').textContent = `✓ Intersección ${isFirst ? '1' : '2'} marcada en mapa: E ${Math.round(coord.e)}, N ${Math.round(coord.n)}`;
+          }
+          showToast(`Intersección vial ${isFirst ? '1' : '2'} capturada: E ${Math.round(coord.e)}, N ${Math.round(coord.n)}`);
+          $('dxfDialog')?.showModal();
         }
       },
       onFinishDraw: () => finishDrawPolygon(),
