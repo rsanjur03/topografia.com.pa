@@ -325,124 +325,117 @@
 
   /**
    * Busca automáticamente 2 intersecciones de calles/caminos cercanas usando OpenStreetMap (Overpass API)
-   * y devuelve sus coordenadas UTM exactas para el cuadro DETALLE DE AMARRE ANATI.
+   * en paralelo con tope estricto de tiempo (nunca bloquea la descarga del PDF).
    */
-  async function findNearbyRoadIntersections(lat, lon, utmZone = 17, utmHemi = 'N', maxRadiusM = 1200) {
+  async function findNearbyRoadIntersections(lat, lon, utmZone = 17, utmHemi = 'N', maxRadiusM = 1200, opts = {}) {
     const Geo = global.TopoGeodesy;
     if (!Geo || !Number.isFinite(lat) || !Number.isFinite(lon)) return [];
 
+    const timeoutMs = Number(opts.timeoutMs) || 4000;
     const centerUtm = Geo.latLonToUtm(lat, lon, utmZone, 'WGS84');
     const cUtmE = centerUtm.easting;
     const cUtmN = centerUtm.northing;
     const endpoints = [
       'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+      'https://overpass.private.coffee/api/interpreter'
     ];
 
-    const queryOverpass = async (radius) => {
-      const q = `[out:json][timeout:7];way(around:${radius},${lat.toFixed(6)},${lon.toFixed(6)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)$"];(._;>;);out body;`;
-      for (const ep of endpoints) {
-        const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 7500);
-        try {
-          const resp = await fetch(ep, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
-            body: 'data=' + encodeURIComponent(q),
-            signal: ctrl.signal
-          });
-          clearTimeout(tid);
-          if (!resp.ok) continue;
-          return await resp.json();
-        } catch {
-          clearTimeout(tid);
-        }
-      }
-      return null;
-    };
+    const q = `[out:json][timeout:4];way(around:${Math.round(maxRadiusM)},${lat.toFixed(6)},${lon.toFixed(6)})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)$"];(._;>;);out body;`;
 
-    const radii = [Math.min(850, maxRadiusM), Math.max(1600, maxRadiusM)];
-    for (const radius of radii) {
-      const data = await queryOverpass(radius);
-      if (!data || !Array.isArray(data.elements)) continue;
+    // Consultar mirrors en paralelo con tope estricto (el primero válido gana)
+    const fetchMirror = (ep) => new Promise((resolve, reject) => {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => { ctrl.abort(); reject(new Error('timeout')); }, timeoutMs);
+      fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        body: 'data=' + encodeURIComponent(q),
+        signal: ctrl.signal
+      })
+        .then(r => (r.ok ? r.json() : Promise.reject(new Error('http ' + r.status))))
+        .then(json => { clearTimeout(tid); resolve(json); })
+        .catch(err => { clearTimeout(tid); reject(err); });
+    });
 
-      const nodes = new Map();
-      const ways = [];
-      for (const el of data.elements) {
-        if (el.type === 'node') nodes.set(el.id, el);
-        else if (el.type === 'way' && Array.isArray(el.nodes) && el.nodes.length >= 2) ways.push(el);
-      }
-
-      // Contar cuántos caminos distintos (y grado de conexión) confluyen en cada nodo
-      const roadRank = {
-        motorway: 5, trunk: 5, primary: 5, secondary: 4, tertiary: 4,
-        unclassified: 3, residential: 3, living_street: 2, service: 1, track: 1
-      };
-      const nodeWays = new Map();
-      const nodeDegree = new Map();
-      for (const w of ways) {
-        const hw = (w.tags && w.tags.highway) || 'unclassified';
-        const rank = roadRank[hw] || 2;
-        const name = (w.tags && (w.tags.name || w.tags.ref)) || hw;
-        const nList = w.nodes;
-        for (let i = 0; i < nList.length; i++) {
-          const nid = nList[i];
-          const degAdd = (i === 0 || i === nList.length - 1) ? 1 : 2;
-          nodeDegree.set(nid, (nodeDegree.get(nid) || 0) + degAdd);
-          if (!nodeWays.has(nid)) nodeWays.set(nid, []);
-          nodeWays.get(nid).push({ id: w.id, name, hw, rank });
-        }
-      }
-
-      const candidates = [];
-      for (const [nid, wList] of nodeWays.entries()) {
-        const deg = nodeDegree.get(nid) || 0;
-        if (wList.length < 2 || deg < 3) continue; // Intersección real (>= 3 brazos / >= 2 vías)
-        const nd = nodes.get(nid);
-        if (!nd) continue;
-        const u = Geo.latLonToUtm(nd.lat, nd.lon, utmZone, 'WGS84');
-        const ue = u.easting, un = u.northing;
-        const dist = Math.hypot(ue - cUtmE, un - cUtmN);
-        if (dist < 25 || dist > radius * 0.95) continue;
-        const maxRank = Math.max(...wList.map(x => x.rank));
-        const uniqueNames = [...new Set(wList.map(x => x.name).filter(Boolean))];
-        // Preferir intersecciones cercanas (60..750 m) sobre vías principales
-        const score = (maxRank * 180) - dist + (wList.length >= 3 ? 60 : 0);
-        candidates.push({
-          e: Math.round(ue),
-          n: Math.round(un),
-          lat: nd.lat,
-          lon: nd.lon,
-          dist,
-          angle: Math.atan2(un - cUtmN, ue - cUtmE),
-          label: uniqueNames.slice(0, 2).join(' / ') || 'Intersección vial',
-          score
-        });
-      }
-
-      if (candidates.length === 0) continue;
-      candidates.sort((a, b) => b.score - a.score);
-
-      const picked = [candidates[0]];
-      // Elegir una 2da intersección bien separada (>= 90 m de la 1ra, idealmente en dirección distinta)
-      let bestSecond = null;
-      let bestSecondScore = -Infinity;
-      for (let i = 1; i < candidates.length; i++) {
-        const c = candidates[i];
-        const sep = Math.hypot(c.e - picked[0].e, c.n - picked[0].n);
-        if (sep < 75) continue;
-        const angDiff = Math.abs(Math.atan2(Math.sin(c.angle - picked[0].angle), Math.cos(c.angle - picked[0].angle)));
-        const s2 = c.score + angDiff * 140 + Math.min(sep, 400) * 0.25;
-        if (s2 > bestSecondScore) {
-          bestSecondScore = s2;
-          bestSecond = c;
-        }
-      }
-      if (bestSecond) picked.push(bestSecond);
-      if (picked.length > 0) return picked;
+    let data = null;
+    try {
+      data = await Promise.any(endpoints.map(fetchMirror));
+    } catch {
+      return [];
     }
-    return [];
+    if (!data || !Array.isArray(data.elements)) return [];
+
+    const nodes = new Map();
+    const ways = [];
+    for (const el of data.elements) {
+      if (el.type === 'node') nodes.set(el.id, el);
+      else if (el.type === 'way' && Array.isArray(el.nodes) && el.nodes.length >= 2) ways.push(el);
+    }
+
+    const roadRank = {
+      motorway: 5, trunk: 5, primary: 5, secondary: 4, tertiary: 4,
+      unclassified: 3, residential: 3, living_street: 2, service: 1, track: 1
+    };
+    const nodeWays = new Map();
+    const nodeDegree = new Map();
+    for (const w of ways) {
+      const hw = (w.tags && w.tags.highway) || 'unclassified';
+      const rank = roadRank[hw] || 2;
+      const name = (w.tags && (w.tags.name || w.tags.ref)) || hw;
+      const nList = w.nodes;
+      for (let i = 0; i < nList.length; i++) {
+        const nid = nList[i];
+        const degAdd = (i === 0 || i === nList.length - 1) ? 1 : 2;
+        nodeDegree.set(nid, (nodeDegree.get(nid) || 0) + degAdd);
+        if (!nodeWays.has(nid)) nodeWays.set(nid, []);
+        nodeWays.get(nid).push({ id: w.id, name, hw, rank });
+      }
+    }
+
+    const candidates = [];
+    for (const [nid, wList] of nodeWays.entries()) {
+      const deg = nodeDegree.get(nid) || 0;
+      if (wList.length < 2 || deg < 3) continue;
+      const nd = nodes.get(nid);
+      if (!nd) continue;
+      const u = Geo.latLonToUtm(nd.lat, nd.lon, utmZone, 'WGS84');
+      const ue = u.easting, un = u.northing;
+      const dist = Math.hypot(ue - cUtmE, un - cUtmN);
+      if (dist < 25 || dist > maxRadiusM * 0.95) continue;
+      const maxRank = Math.max(...wList.map(x => x.rank));
+      const uniqueNames = [...new Set(wList.map(x => x.name).filter(Boolean))];
+      const score = (maxRank * 180) - dist + (wList.length >= 3 ? 60 : 0);
+      candidates.push({
+        e: Math.round(ue),
+        n: Math.round(un),
+        lat: nd.lat,
+        lon: nd.lon,
+        dist,
+        angle: Math.atan2(un - cUtmN, ue - cUtmE),
+        label: uniqueNames.slice(0, 2).join(' / ') || 'Intersección vial',
+        score
+      });
+    }
+
+    if (candidates.length === 0) return [];
+    candidates.sort((a, b) => b.score - a.score);
+
+    const picked = [candidates[0]];
+    let bestSecond = null;
+    let bestSecondScore = -Infinity;
+    for (let i = 1; i < candidates.length; i++) {
+      const c = candidates[i];
+      const sep = Math.hypot(c.e - picked[0].e, c.n - picked[0].n);
+      if (sep < 75) continue;
+      const angDiff = Math.abs(Math.atan2(Math.sin(c.angle - picked[0].angle), Math.cos(c.angle - picked[0].angle)));
+      const s2 = c.score + angDiff * 140 + Math.min(sep, 400) * 0.25;
+      if (s2 > bestSecondScore) {
+        bestSecondScore = s2;
+        bestSecond = c;
+      }
+    }
+    if (bestSecond) picked.push(bestSecond);
+    return picked;
   }
 
   // ==================== HELPERS DE DIBUJO CARTOGRÁFICO ANATI ====================
@@ -945,13 +938,15 @@
       ? Number(amaScaleOpt)
       : (maxSpan <= 450 ? 10000 : 15000);
 
-    // Puntos de amarre vial: usar los proporcionados por el usuario, o auto-detectar 2 intersecciones OSM cercanas
+    // Puntos de amarre vial: usar los proporcionados por el usuario, o intentar auto-detectar rápido (máx 2.5s)
     let tiePoints = (options.tiePoints || []).filter(t => t && Number.isFinite(t.e) && Number.isFinite(t.n));
     if (tiePoints.length === 0 && options.autoDetectTies !== false) {
       try {
         const cGeo = Geo.utmToLatLon(cE, cN, utmZone, utmHemi, 'WGS84');
         const radiusM = amarreScale === 10000 ? 950 : 1450;
-        tiePoints = await findNearbyRoadIntersections(cGeo.lat, cGeo.lon, utmZone, utmHemi, radiusM);
+        tiePoints = await findNearbyRoadIntersections(cGeo.lat, cGeo.lon, utmZone, utmHemi, radiusM, {
+          timeoutMs: options.tieTimeoutMs || 2500
+        });
       } catch (err) {
         console.warn('Auto-detección de intersecciones viales omitida:', err);
       }

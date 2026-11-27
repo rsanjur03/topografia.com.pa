@@ -1603,6 +1603,27 @@
           const g = global.TopoGeodesy.utmToLatLon(avgE, avgN, state.utmZone, state.utmHemi, 'WGS84');
           const sh = global.TopoIGN.findCoveringSheet(g.lat, g.lon);
           if (sh && $('anatiHojaIgn')) $('anatiHojaIgn').value = sh.code;
+
+          // Pre-buscar en segundo plano 2 intersecciones viales si los campos están vacíos (no bloquea nada)
+          if (readAnatiTiePoints().length === 0) {
+            const statusEl = $('anatiTieStatus');
+            if (statusEl) statusEl.textContent = 'Buscando automáticamente 2 intersecciones de calles cercanas...';
+            global.TopoIGN.findNearbyRoadIntersections(g.lat, g.lon, state.utmZone, state.utmHemi, 1200, { timeoutMs: 4500 })
+              .then((ties) => {
+                if (readAnatiTiePoints().length > 0) return; // Usuario ya los llenó manualmente
+                if (ties.length > 0) {
+                  if (ties[0]) { $('anatiTie1E').value = Math.round(ties[0].e); $('anatiTie1N').value = Math.round(ties[0].n); }
+                  if (ties[1]) { $('anatiTie2E').value = Math.round(ties[1].e); $('anatiTie2N').value = Math.round(ties[1].n); }
+                  if (statusEl) {
+                    const desc = ties.map((t, i) => `Cruce ${i + 1}: E ${Math.round(t.e)}, N ${Math.round(t.n)} (${Math.round(t.dist)} m)`).join(' · ');
+                    statusEl.textContent = `✓ ${ties.length} intersección(es) lista(s): ${desc}`;
+                  }
+                } else if (statusEl) {
+                  statusEl.textContent = 'Sin cruces OSM automáticos. Puedes marcarlos directo sobre la hoja IGN con "📍 Elegir en mapa" o descargar el PDF igual.';
+                }
+              })
+              .catch(() => {});
+          }
         }
       }
       dxfDialog.showModal();
