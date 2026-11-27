@@ -8,7 +8,7 @@
 
   <!-- Leaflet CSS para Basemaps Satelital y OpenStreetMap -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <link rel="stylesheet" href="css/styles.css?v=20261127c" />
+  <link rel="stylesheet" href="css/styles.css?v=20261127d" />
 </head>
 <body>
   <div class="app-shell">
@@ -105,7 +105,7 @@
             <div class="grid-3">
               <label class="field">
                 <span data-i18n="lblPoint">Punto</span>
-                <input id="initId" type="text" value="P1" />
+                <input id="initId" type="text" value="1" />
               </label>
               <label class="field">
                 <span data-i18n="lblEast">Este (X)</span>
@@ -150,7 +150,7 @@
                 </label>
                 <label class="field">
                   <span data-i18n="lblNewPointId">Nuevo Punto (ID)</span>
-                  <input id="travNextId" type="text" value="P2" required />
+                  <input id="travNextId" type="text" value="2" required />
                 </label>
               </div>
 
@@ -1628,7 +1628,7 @@
 
       <label class="field mt-sm">
         <span data-i18n="lblPasteCoords">O pega directamente tus coordenadas (1 punto por línea):</span>
-        <textarea id="importTextarea" rows="5" placeholder="P1,932597.318,342527.835,0.00,MOJON 1&#10;P2,932534.131,342604.985,0.00,MOJON 2"></textarea>
+        <textarea id="importTextarea" rows="5" placeholder="1,932597.318,342527.835,0.00,MOJON 1&#10;2,932534.131,342604.985,0.00,MOJON 2"></textarea>
       </label>
 
       <div id="importPreview" class="import-preview mt-sm"></div>
@@ -2008,15 +2008,15 @@
 
   <!-- Scripts (ordenados sin dependencias de bundler: funciona en servidor y local) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <script src="js/geodesy.js?v=20261127c"></script>
-  <script src="js/cogo.js?v=20261127c"></script>
-  <script src="js/ign.js?v=20261127c"></script>
-  <script src="js/dxf.js?v=20261127c"></script>
-  <script src="js/pdf.js?v=20261127c"></script>
-  <script src="js/io.js?v=20261127c"></script>
-  <script src="js/i18n.js?v=20261127c"></script>
-  <script src="js/map.js?v=20261127c"></script>
-  <script src="js/calculators.js?v=20261127c"></script>
-  <script src="js/app.js?v=20261127c"></script>
+  <script src="js/geodesy.js?v=20261127d"></script>
+  <script src="js/cogo.js?v=20261127d"></script>
+  <script src="js/ign.js?v=20261127d"></script>
+  <script src="js/dxf.js?v=20261127d"></script>
+  <script src="js/pdf.js?v=20261127d"></script>
+  <script src="js/io.js?v=20261127d"></script>
+  <script src="js/i18n.js?v=20261127d"></script>
+  <script src="js/map.js?v=20261127d"></script>
+  <script src="js/calculators.js?v=20261127d"></script>
+  <script src="js/app.js?v=20261127d"></script>
 </body>
 </html>

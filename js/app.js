@@ -49,7 +49,7 @@
       const m = String(p.id).match(/(\d+)$/);
       if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
     }
-    return `P${Math.max(maxNum + 1, state.points.length + 1)}`;
+    return String(Math.max(maxNum + 1, state.points.length + 1));
   }
 
   function getPointByIndex(idx) {
@@ -309,10 +309,10 @@
     $('projectNameInput').value = 'Finca_Chiriqui_17N';
     state.projectName = 'Finca_Chiriqui_17N';
 
-    const p1 = { id: 'P1', e: 342527.835, n: 932597.318, z: 0.00, desc: 'MOJON 1' };
-    const p2 = { id: 'P2', e: 342604.985, n: 932534.131, z: 0.00, desc: 'MOJON 2' };
-    const p3 = { id: 'P3', e: 342643.398, n: 932579.153, z: 0.00, desc: 'MOJON 3' };
-    const p4 = { id: 'P4', e: 342564.762, n: 932639.872, z: 0.00, desc: 'MOJON 4' };
+    const p1 = { id: '1', e: 342527.835, n: 932597.318, z: 0.00, desc: 'MOJON 1' };
+    const p2 = { id: '2', e: 342604.985, n: 932534.131, z: 0.00, desc: 'MOJON 2' };
+    const p3 = { id: '3', e: 342643.398, n: 932579.153, z: 0.00, desc: 'MOJON 3' };
+    const p4 = { id: '4', e: 342564.762, n: 932639.872, z: 0.00, desc: 'MOJON 4' };
 
     state.points = [p1, p2, p3, p4];
     state.closed = true;
@@ -350,7 +350,7 @@
     const finishBtn = $('btnFinishDraw');
     if (state.editMode) {
       finishBtn.classList.add('hidden');
-      $('pickBannerText').textContent = 'Modo Edición activo — Arrastra cualquier vértice (P1, P2...) sobre el mapa para moverlo';
+      $('pickBannerText').textContent = 'Modo Edición activo — Arrastra cualquier vértice (1, 2...) sobre el mapa para moverlo';
       banner.classList.remove('hidden');
       showToast('Modo edición activado: arrastra cualquier vértice para moverlo');
     } else if (!mapEngine.pickMode) {
@@ -548,7 +548,7 @@
 
     // ==================== TAB 1: POLIGONAL ====================
     $('btnSetInitial').addEventListener('click', () => {
-      const id = $('initId').value.trim() || 'P1';
+      const id = $('initId').value.trim() || '1';
       const e = parseFloat($('initE').value);
       const n = parseFloat($('initN').value);
       const z = parseFloat($('initZ').value) || 0;
@@ -631,7 +631,7 @@
           return;
         }
         state.points.push({
-          id: $('initId').value.trim() || 'P1',
+          id: $('initId').value.trim() || '1',
           e: ie,
           n: ino,
           z: parseFloat($('initZ').value) || 0,
@@ -2258,7 +2258,7 @@
           $('initE').value = coord.e.toFixed(3);
           $('initN').value = coord.n.toFixed(3);
           if (state.points.length === 0) {
-            addPoint({ id: $('initId').value.trim() || 'P1', e: coord.e, n: coord.n, z: parseFloat($('initZ').value) || 0, desc: $('initDesc').value.trim() }, false);
+            addPoint({ id: $('initId').value.trim() || '1', e: coord.e, n: coord.n, z: parseFloat($('initZ').value) || 0, desc: $('initDesc').value.trim() }, false);
           } else {
             state.points[0].e = coord.e;
             state.points[0].n = coord.n;

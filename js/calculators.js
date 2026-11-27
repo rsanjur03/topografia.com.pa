@@ -720,10 +720,10 @@
 
     // Coordenadas oficiales reales del polígono de David, Chiriquí
     const realPts = [
-      { id: 'P1', e: 342527.835, n: 932597.318, z: 48.50, desc: 'MOJON 1' },
-      { id: 'P2', e: 342604.985, n: 932534.131, z: 48.90, desc: 'MOJON 2' },
-      { id: 'P3', e: 342643.398, n: 932579.153, z: 48.30, desc: 'MOJON 3' },
-      { id: 'P4', e: 342564.762, n: 932639.872, z: 48.10, desc: 'MOJON 4' }
+      { id: '1', e: 342527.835, n: 932597.318, z: 48.50, desc: 'MOJON 1' },
+      { id: '2', e: 342604.985, n: 932534.131, z: 48.90, desc: 'MOJON 2' },
+      { id: '3', e: 342643.398, n: 932579.153, z: 48.30, desc: 'MOJON 3' },
+      { id: '4', e: 342564.762, n: 932639.872, z: 48.10, desc: 'MOJON 4' }
     ];
 
     // Generar su equivalente en coordenadas locales arbitrarias (origen 1000,1000 y rotado +22.5°)
@@ -742,9 +742,9 @@
     });
 
     // 3 puntos de control (P1, P2, P3) con ligera variación realista de campo (~6 mm en P3)
-    addC6CtrlRow({ id: 'P1', localE: localPts[0].e.toFixed(3), localN: localPts[0].n.toFixed(3), localZ: localPts[0].z.toFixed(2), targetE: realPts[0].e.toFixed(3), targetN: realPts[0].n.toFixed(3), targetZ: realPts[0].z.toFixed(2) });
-    addC6CtrlRow({ id: 'P2', localE: localPts[1].e.toFixed(3), localN: localPts[1].n.toFixed(3), localZ: localPts[1].z.toFixed(2), targetE: realPts[1].e.toFixed(3), targetN: realPts[1].n.toFixed(3), targetZ: realPts[1].z.toFixed(2) });
-    addC6CtrlRow({ id: 'P3', localE: localPts[2].e.toFixed(3), localN: localPts[2].n.toFixed(3), localZ: localPts[2].z.toFixed(2), targetE: (realPts[2].e + 0.005).toFixed(3), targetN: (realPts[2].n - 0.004).toFixed(3), targetZ: realPts[2].z.toFixed(2) });
+    addC6CtrlRow({ id: '1', localE: localPts[0].e.toFixed(3), localN: localPts[0].n.toFixed(3), localZ: localPts[0].z.toFixed(2), targetE: realPts[0].e.toFixed(3), targetN: realPts[0].n.toFixed(3), targetZ: realPts[0].z.toFixed(2) });
+    addC6CtrlRow({ id: '2', localE: localPts[1].e.toFixed(3), localN: localPts[1].n.toFixed(3), localZ: localPts[1].z.toFixed(2), targetE: realPts[1].e.toFixed(3), targetN: realPts[1].n.toFixed(3), targetZ: realPts[1].z.toFixed(2) });
+    addC6CtrlRow({ id: '3', localE: localPts[2].e.toFixed(3), localN: localPts[2].n.toFixed(3), localZ: localPts[2].z.toFixed(2), targetE: (realPts[2].e + 0.005).toFixed(3), targetN: (realPts[2].n - 0.004).toFixed(3), targetZ: realPts[2].z.toFixed(2) });
 
     $('c6UtmZone').value = '17';
     $('c6UtmHemi').value = 'N';
@@ -1219,10 +1219,10 @@
     // Sección 4 de CSF: Conversión masiva de puntos para Estación Total
     $('c7PointsText').value = [
       'Punto,Norte,Este,Cota,Descripcion',
-      'P1,932597.318,342527.835,48.50,MOJON 1',
-      'P2,932534.131,342604.985,48.90,MOJON 2',
-      'P3,932579.153,342643.398,48.30,MOJON 3',
-      'P4,932639.872,342564.762,48.10,MOJON 4'
+      '1,932597.318,342527.835,48.50,MOJON 1',
+      '2,932534.131,342604.985,48.90,MOJON 2',
+      '3,932579.153,342643.398,48.30,MOJON 3',
+      '4,932639.872,342564.762,48.10,MOJON 4'
     ].join('\n');
 
     $('btnC7ScalePts').addEventListener('click', calcCsfBatchPoints);

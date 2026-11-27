@@ -508,18 +508,37 @@
       }
     }
 
-    // 5b. Detalle de áreas (si hay área inscrita)
+    // 5b. DETALLE DE AREAS formato resta oficial ANATI (si hay área inscrita)
     const inscritaM2 = parseFloat(a.areaInscrita);
     if (Number.isFinite(inscritaM2) && inscritaM2 > 0) {
-      const detY = Math.min(rightY - 6, 248);
-      cv.text('DETALLE DE AREAS:', 466, detY, 2.7, { font: 'F2', color: [0.05, 0.15, 0.3] });
-      cv.setStroke(0.05, 0.15, 0.3, 0.25);
-      cv.line(466, detY - 1.8, 504, detY - 1.8);
-      const folioTag = a.folioReal ? ` FOLIO REAL ${a.folioReal}` : '';
+      const detY = Math.min(rightY - 7, 250);
+      const padArea = (m2) => {
+        const v = Math.max(0, Number(m2) || 0);
+        const h = Math.floor(v / 10000);
+        const r = v - h * 10000;
+        return `${String(h).padStart(2, '0')} HAS + ${r.toFixed(2).padStart(7, '0')} m\u00b2`;
+      };
+      const folioLabel = a.folioReal ? ` DEL FOLIO REAL ${a.folioReal.toUpperCase()}` : '';
       const restoM2 = Math.max(0, inscritaM2 - metrics.areaM2);
-      cv.text(`AREA INSCRITA${folioTag}: ${formatArea(inscritaM2).replace('m2', 'm\u00b2')}`, 466, detY - 6.8, 2.1, { font: 'F1' });
-      cv.text(`AREA MEDIDA / SEGREGAR: ${formatArea(metrics.areaM2).replace('m2', 'm\u00b2')}`, 466, detY - 11.5, 2.1, { font: 'F1' });
-      cv.text(`RESTO LIBRE ESTIMADO: ${formatArea(restoM2).replace('m2', 'm\u00b2')}`, 466, detY - 16.2, 2.2, { font: 'F2' });
+      const valX = 605;
+
+      cv.text('DETALLE DE AREAS:', 466, detY, 2.7, { font: 'F2', color: [0.05, 0.15, 0.3] });
+      cv.setStroke(0.05, 0.15, 0.3, 0.28);
+      cv.line(466, detY - 1.6, 500, detY - 1.6);
+
+      // Fila 1: Área Inscrita
+      cv.text(`AREA INSCRITA${folioLabel} =`, 466, detY - 7.5, 2.15, { font: 'F1' });
+      cv.text(padArea(inscritaM2), valX, detY - 7.5, 2.15, { font: 'F1', align: 'right' });
+
+      // Fila 2: Área a Segregar (con línea de resta debajo del valor)
+      cv.text('AREA A SEGREGAR =', 466, detY - 12.2, 2.15, { font: 'F1' });
+      cv.text(padArea(metrics.areaM2), valX, detY - 12.2, 2.15, { font: 'F1', align: 'right' });
+      cv.setStroke(0.08, 0.1, 0.14, 0.32);
+      cv.line(573, detY - 13.8, valX, detY - 13.8);
+
+      // Fila 3: Resto Libre (en negrita)
+      cv.text(`RESTO LIBRE${folioLabel} =`, 466, detY - 17.5, 2.2, { font: 'F2' });
+      cv.text(padArea(restoM2), valX, detY - 17.5, 2.2, { font: 'F2', align: 'right' });
     }
 
     // 5c. Notas técnicas ANATI
@@ -614,7 +633,7 @@
       cv.setFill(0.02, 0.48, 0.32);
       cv.circle(amaX + amaW / 2, amaY + amaH / 2, 2.4, 'f');
       cv.text('LOTE MEDIDO', amaX + amaW / 2 + 5, amaY + amaH / 2 + 6, 2.4, { font: 'F2' });
-      cv.text(`P1: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, amaX + amaW / 2, amaY + 5, 2.1, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
+      cv.text(`${points[0].id}: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, amaX + amaW / 2, amaY + 5, 2.1, { font: 'F3', align: 'center', color: [0.3, 0.35, 0.42] });
       cv.text('DETALLE DE AMARRE', amaX + amaW / 2, amaY - 5.5, 2.75, { font: 'F2', align: 'center' });
       cv.text('ESCALA 1:10,000', amaX + amaW / 2, amaY - 10.0, 2.35, { font: 'F1', align: 'center' });
     }

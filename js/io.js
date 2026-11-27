@@ -80,36 +80,36 @@
       let id = '', e = NaN, n = NaN, z = 0, desc = '';
 
       if (format === 'PNEZD') {
-        id = cols[0] || `P${parsed.length + 1}`;
+        id = cols[0] || String(parsed.length + 1);
         n = parseNum(cols[1]);
         e = parseNum(cols[2]);
         z = cols[3] !== undefined && cols[3] !== '' ? parseNum(cols[3]) : 0;
         desc = cols.slice(4).join(' ');
       } else if (format === 'PENZD') {
-        id = cols[0] || `P${parsed.length + 1}`;
+        id = cols[0] || String(parsed.length + 1);
         e = parseNum(cols[1]);
         n = parseNum(cols[2]);
         z = cols[3] !== undefined && cols[3] !== '' ? parseNum(cols[3]) : 0;
         desc = cols.slice(4).join(' ');
       } else if (format === 'NEZ') {
-        id = `P${parsed.length + 1}`;
+        id = String(parsed.length + 1);
         n = parseNum(cols[0]);
         e = parseNum(cols[1]);
         z = cols[2] !== undefined && cols[2] !== '' ? parseNum(cols[2]) : 0;
         desc = cols.slice(3).join(' ');
       } else if (format === 'ENZ') {
-        id = `P${parsed.length + 1}`;
+        id = String(parsed.length + 1);
         e = parseNum(cols[0]);
         n = parseNum(cols[1]);
         z = cols[2] !== undefined && cols[2] !== '' ? parseNum(cols[2]) : 0;
         desc = cols.slice(3).join(' ');
       } else if (format === 'NE') {
-        id = `P${parsed.length + 1}`;
+        id = String(parsed.length + 1);
         n = parseNum(cols[0]);
         e = parseNum(cols[1]);
         z = 0;
       } else if (format === 'EN') {
-        id = `P${parsed.length + 1}`;
+        id = String(parsed.length + 1);
         e = parseNum(cols[0]);
         n = parseNum(cols[1]);
         z = 0;
@@ -126,7 +126,7 @@
       }
 
       parsed.push({
-        id: String(id).trim() || `P${parsed.length + 1}`,
+        id: String(id).trim() || String(parsed.length + 1),
         e,
         n,
         z: Number.isFinite(z) ? z : 0,

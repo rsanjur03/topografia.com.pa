@@ -785,17 +785,32 @@
       }
     }
 
-    // 5b. DETALLE DE AREAS (si se ingresó Área Inscrita o si hay lotes)
+    // 5b. DETALLE DE AREAS formato resta oficial ANATI (si se ingresó Área Inscrita)
     const inscritaM2 = parseFloat(a.areaInscrita);
     if (Number.isFinite(inscritaM2) && inscritaM2 > 0) {
-      const detY = Math.min(rightY - 6, 248);
-      dxf.addText('MARCO_Y_LEYENDAS', 'DETALLE DE AREAS:', 466, detY, 2.6, 0, 0, 2, S);
-      dxf.addLine('MARCO_Y_LEYENDAS', 466, detY - 2, 512, detY - 2, 0, 0, null, S);
-      const folioTag = a.folioReal ? ` FOLIO REAL ${a.folioReal}` : '';
+      const detY = Math.min(rightY - 7, 250);
+      const padArea = (m2) => {
+        const v = Math.max(0, Number(m2) || 0);
+        const h = Math.floor(v / 10000);
+        const r = v - h * 10000;
+        return `${String(h).padStart(2, '0')} HAS + ${r.toFixed(2).padStart(7, '0')} m2`;
+      };
+      const folioLabel = a.folioReal ? ` DEL FOLIO REAL ${a.folioReal.toUpperCase()}` : '';
       const restoM2 = Math.max(0, inscritaM2 - metrics.areaM2);
-      dxf.addText('MARCO_Y_LEYENDAS', `AREA INSCRITA${folioTag}: ${formatAnatiArea(inscritaM2)}`, 466, detY - 7, 2.0, 0, 0, 2, S);
-      dxf.addText('MARCO_Y_LEYENDAS', `AREA MEDIDA / SEGREGAR: ${formatAnatiArea(metrics.areaM2)}`, 466, detY - 12, 2.0, 0, 0, 2, S);
-      dxf.addText('MARCO_Y_LEYENDAS', `RESTO LIBRE ESTIMADO: ${formatAnatiArea(restoM2)}`, 466, detY - 17, 2.1, 0, 0, 2, S);
+      const valX = 605;
+
+      dxf.addText('MARCO_Y_LEYENDAS', 'DETALLE DE AREAS:', 466, detY, 2.6, 0, 0, 2, S);
+      dxf.addLine('MARCO_Y_LEYENDAS', 466, detY - 1.8, 502, detY - 1.8, 0, 0, null, S);
+
+      dxf.addText('MARCO_Y_LEYENDAS', `AREA INSCRITA${folioLabel} =`, 466, detY - 7.5, 2.0, 0, 0, 2, S);
+      dxf.addText('MARCO_Y_LEYENDAS', padArea(inscritaM2), valX, detY - 7.5, 2.0, 0, 2, 2, S);
+
+      dxf.addText('MARCO_Y_LEYENDAS', 'AREA A SEGREGAR =', 466, detY - 12.2, 2.0, 0, 0, 2, S);
+      dxf.addText('MARCO_Y_LEYENDAS', padArea(metrics.areaM2), valX, detY - 12.2, 2.0, 0, 2, 2, S);
+      dxf.addLine('MARCO_Y_LEYENDAS', 566, detY - 14.0, valX, detY - 14.0, 0, 0, null, S);
+
+      dxf.addText('MARCO_Y_LEYENDAS', `RESTO LIBRE${folioLabel} =`, 466, detY - 17.5, 2.1, 0, 0, 2, S);
+      dxf.addText('MARCO_Y_LEYENDAS', padArea(restoM2), valX, detY - 17.5, 2.1, 0, 2, 2, S);
     }
 
     // 5c. NOTAS TÉCNICAS ANATI (x=465..606, y=115..205)
@@ -851,7 +866,7 @@
     dxf.addLine('TOPO_CUADRICULA', 100, 132, 100, 292, 0, 0, null, S);
     dxf.addCircle('TOPO_PUNTOS', 100, 212, 2.5, 0, S);
     dxf.addText('MARCO_Y_LEYENDAS', 'GLOBO MEDIDO', 106, 219, 2.3, 0, 0, 2, S);
-    dxf.addText('TOPO_CUADRICULA', `P1: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, 100, 137, 2.0, 0, 1, 2, S);
+    dxf.addText('TOPO_CUADRICULA', `${points[0].id}: E ${points[0].e.toFixed(2)}  N ${points[0].n.toFixed(2)}`, 100, 137, 2.0, 0, 1, 2, S);
 
     // 7. VENTANA PRINCIPAL DE DIBUJO A ESCALA EXACTA 1:E (x=195..454, y=118..452)
     const winX1 = 195, winY1 = 128, winX2 = 454, winY2 = 452;
